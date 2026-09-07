@@ -267,7 +267,7 @@ describe("vertical web rendering", () => {
     ]);
     for (const [color, glyph] of [
       ["dim", "●"],
-      ["warning", "▶︎"],
+      ["muted", "▶︎"],
       ["success", "✔︎"],
       ["error", "✘︎"],
       ["dim", "■"],
@@ -383,7 +383,7 @@ describe("vertical web rendering", () => {
         false,
       ).render(80),
     ).toEqual(["▶︎ Working…"]);
-    expect(progressTheme.fg).toHaveBeenCalledWith("warning", "▶︎");
+    expect(progressTheme.fg).toHaveBeenCalledWith("muted", "▶︎");
     expect(progressTheme.fg).toHaveBeenCalledWith("muted", "Working…");
     const legacy = { content: [{ type: "text", text: "# Legacy heading" }] };
     expect(
