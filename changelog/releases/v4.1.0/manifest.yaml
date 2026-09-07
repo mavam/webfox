@@ -1,0 +1,9 @@
+created: 2026-09-07
+title: You.com web and news search
+intro: >-
+  Search the web and news with You.com from the CLI, TypeScript library, and Pi extension.
+  Filter or boost domains and optionally retrieve full page content with live crawling,
+  without changing your existing provider defaults.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.0.1
