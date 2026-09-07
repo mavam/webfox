@@ -12,6 +12,7 @@ import { perplexityProvider } from "./perplexity/definition.js";
 import { serperProvider } from "./serper/definition.js";
 import { tavilyProvider } from "./tavily/definition.js";
 import { valyuProvider } from "./valyu/definition.js";
+import { youcomProvider } from "./youcom/definition.js";
 
 export const providers = {
   brave: braveProvider,
@@ -28,4 +29,5 @@ export const providers = {
   serper: serperProvider,
   tavily: tavilyProvider,
   valyu: valyuProvider,
+  youcom: youcomProvider,
 } as const;

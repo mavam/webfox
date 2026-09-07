@@ -137,6 +137,7 @@ Use different providers for different tasks:
 | [Serper]     |   ✔︎    |          |        |          |
 | [Tavily]     |   ✔︎    |    ✔︎     |        |          |
 | [Valyu]      |   ✔︎    |    ✔︎     |   ✔︎    |    ✔︎     |
+| [You.com]    |   ✔︎    |          |        |          |
 
 [Brave]: ./docs/provider.md#brave
 [Cloudflare]: ./docs/provider.md#cloudflare
@@ -152,6 +153,7 @@ Use different providers for different tasks:
 [Serper]: ./docs/provider.md#serper
 [Tavily]: ./docs/provider.md#tavily
 [Valyu]: ./docs/provider.md#valyu
+[You.com]: ./docs/provider.md#youcom
 
 See the [provider guide](./docs/provider.md) for credentials, examples, and caveats.
 
@@ -172,7 +174,7 @@ or, on Windows, `APPDATA`. Override it with `WEBFOX_CONFIG` or `--config <path>`
 For example:
 
 ```yaml
-$schema: https://unpkg.com/webfox@4.0.0/dist/config.schema.json
+$schema: https://unpkg.com/webfox@4.0.1/dist/config.schema.json
 defaults:
   search:
     provider: brave

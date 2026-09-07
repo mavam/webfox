@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/webfox@4.0.0/dist/config.schema.json",
+  "$id": "https://unpkg.com/webfox@4.0.1/dist/config.schema.json",
   "title": "webfox configuration",
   "type": "object",
   "additionalProperties": false,
@@ -30,7 +30,8 @@
                 "perplexity",
                 "serper",
                 "tavily",
-                "valyu"
+                "valyu",
+                "youcom"
               ]
             },
             "maxResults": {
@@ -4258,6 +4259,142 @@
                     }
                   },
                   "description": "Valyu research options.",
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "youcom": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "credentials": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "api": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "env": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["env"]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["value"]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "required": ["command"]
+                    }
+                  ]
+                }
+              }
+            },
+            "baseUrl": {
+              "type": "string",
+              "minLength": 1
+            },
+            "options": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "search": {
+                  "type": "object",
+                  "properties": {
+                    "freshness": {
+                      "type": "string",
+                      "description": "Freshness window such as day, week, month, year, or a YYYY-MM-DDtoYYYY-MM-DD range."
+                    },
+                    "country": {
+                      "type": "string",
+                      "description": "Country code used to localize search results, for example US."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language for the returned web results, for example en."
+                    },
+                    "safesearch": {
+                      "type": "string",
+                      "enum": ["moderate", "off", "strict"],
+                      "description": "Safe-search filtering level."
+                    },
+                    "knowledge": {
+                      "type": "boolean",
+                      "description": "Include knowledge results alongside web and news results."
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9,
+                      "description": "Pagination offset. Results are returned in count-sized pages."
+                    },
+                    "include_domains": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Allowlist of domains to return from You.com search results."
+                    },
+                    "exclude_domains": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Blocklist of domains to exclude from You.com search results."
+                    },
+                    "boost_domains": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Domains to boost in ranking without filtering out other results."
+                    },
+                    "extraction": {
+                      "type": "object",
+                      "properties": {
+                        "extraction_mode": {
+                          "type": "string",
+                          "enum": ["highlights", "full_page"],
+                          "description": "Request query-aware highlights or full-page content for each result."
+                        },
+                        "crawl_timeout": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 60,
+                          "description": "Seconds to wait while crawling pages for extraction."
+                        }
+                      },
+                      "description": "Optional extraction controls for the You.com Search API POST endpoint.",
+                      "additionalProperties": false
+                    }
+                  },
+                  "description": "You.com search options.",
                   "additionalProperties": false
                 }
               }

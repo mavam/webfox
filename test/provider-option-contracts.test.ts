@@ -121,6 +121,21 @@ const samples: Array<{
       } satisfies DeepResearchTools,
     },
   },
+  {
+    provider: "youcom",
+    capability: "search",
+    options: {
+      freshness: "week",
+      country: "US",
+      language: "en",
+      safesearch: "moderate",
+      include_domains: ["example.com"],
+      extraction: {
+        extraction_mode: "highlights",
+        crawl_timeout: 10,
+      },
+    },
+  },
 ];
 it.each(samples)(
   "accepts SDK-backed $provider $capability controls",

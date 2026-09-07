@@ -20,6 +20,7 @@ export const PROVIDER_IDS = [
   "serper",
   "tavily",
   "valyu",
+  "youcom",
 ] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 

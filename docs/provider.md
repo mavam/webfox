@@ -160,6 +160,16 @@ Supports search. Set `SERPER_API_KEY`.
 web search "Node.js release notes" --provider serper
 ```
 
+## You.com
+
+Supports search with unified web and news results. Set `YDC_API_KEY`.
+
+```sh
+web search "Node.js release notes" --provider youcom
+```
+
+Use `include_domains` or `exclude_domains` to focus a search on a known source set, and use `extraction.extraction_mode = "highlights"` when you want query-aware passages for RAG-style workflows.
+
 ## Tavily
 
 Supports search and page extraction. Set `TAVILY_API_KEY`.
