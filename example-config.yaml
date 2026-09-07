@@ -34,3 +34,11 @@ providers:
     credentials:
       api:
         env: GOOGLE_API_KEY
+  youcom:
+    credentials:
+      api:
+        env: YDC_API_KEY
+    options:
+      search:
+        language: EN
+        safesearch: moderate

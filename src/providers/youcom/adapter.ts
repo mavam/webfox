@@ -1,4 +1,4 @@
-import { httpError, WebfoxError } from "../../errors.js";
+import { httpError } from "../../errors.js";
 import type { ProviderContext, SearchResponse } from "../contract.js";
 import { trimSnippet } from "../shared.js";
 import type { Youcom } from "./types.js";
@@ -15,7 +15,6 @@ export const adapter = {
     if (!apiKey) throw new Error("You.com search is missing an API key");
 
     const options = asRecord(request.options);
-    validateDomainFilters(options);
 
     const response = await fetch(joinUrl(config.baseUrl), {
       method: "POST",
@@ -31,12 +30,13 @@ export const adapter = {
           "country",
           "language",
           "safesearch",
-          "knowledge",
           "offset",
           "include_domains",
           "exclude_domains",
           "boost_domains",
-          "extraction",
+          "livecrawl",
+          "livecrawl_formats",
+          "crawl_timeout",
         ]),
       }),
       signal: context.signal,
@@ -46,10 +46,23 @@ export const adapter = {
 
     const payload = asRecord(await response.json());
     const searchMetadata = asRecord(payload.metadata);
-    const results = [
-      ...collectResults(asRecord(payload.results).web, "web", searchMetadata),
-      ...collectResults(asRecord(payload.results).news, "news", searchMetadata),
-    ];
+    const web = collectResults(
+      asRecord(payload.results).web,
+      "web",
+      searchMetadata,
+    );
+    const news = collectResults(
+      asRecord(payload.results).news,
+      "news",
+      searchMetadata,
+    );
+    // Count applies per section upstream. Interleave before imposing the shared
+    // overall limit so a full web section cannot hide all news results.
+    const results = [];
+    for (let index = 0; index < Math.max(web.length, news.length); index++) {
+      if (web[index]) results.push(web[index]);
+      if (news[index]) results.push(news[index]);
+    }
 
     return {
       provider: "youcom",
@@ -60,25 +73,6 @@ export const adapter = {
 
 function joinUrl(baseUrl?: string): string {
   return `${(baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "")}/v1/search`;
-}
-
-function validateDomainFilters(options: Record<string, unknown>): void {
-  const includeDomains = arrayOfStrings(options.include_domains);
-  const excludeDomains = arrayOfStrings(options.exclude_domains);
-  const boostDomains = arrayOfStrings(options.boost_domains);
-
-  if (includeDomains.length > 0 && excludeDomains.length > 0) {
-    throw new WebfoxError(
-      "INVALID_INPUT",
-      "You.com search options include_domains and exclude_domains cannot be used together.",
-    );
-  }
-  if (includeDomains.length > 0 && boostDomains.length > 0) {
-    throw new WebfoxError(
-      "INVALID_INPUT",
-      "You.com search options include_domains and boost_domains cannot be used together.",
-    );
-  }
 }
 
 function collectResults(
@@ -96,7 +90,8 @@ function collectResults(
     .filter((entry) => Object.keys(entry).length > 0)
     .map((entry) => {
       const url = string(entry.url) ?? "";
-      const title = string(entry.title) ?? string(entry.name) ?? (url || "Untitled");
+      const title =
+        string(entry.title) ?? string(entry.name) ?? (url || "Untitled");
       return {
         title,
         url,
@@ -111,7 +106,7 @@ function buildSnippet(
   section: "web" | "news",
 ): string {
   const contents = asRecord(entry.contents);
-  const snippets = [...arrayOfStrings(entry.snippets), ...arrayOfStrings(contents.highlights)];
+  const snippets = arrayOfStrings(entry.snippets);
   if (snippets.length > 0) return trimSnippet(snippets.join("\n\n"), 1200);
 
   const text =
@@ -157,7 +152,9 @@ function array(value: unknown): unknown[] {
 }
 
 function arrayOfStrings(value: unknown): string[] {
-  return array(value).flatMap((entry) => (typeof entry === "string" ? [entry] : []));
+  return array(value).flatMap((entry) =>
+    typeof entry === "string" ? [entry] : [],
+  );
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

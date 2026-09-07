@@ -127,18 +127,17 @@ const samples: Array<{
     options: {
       freshness: "week",
       country: "US",
-      language: "en",
+      language: "EN",
       safesearch: "moderate",
       include_domains: ["example.com"],
-      extraction: {
-        extraction_mode: "highlights",
-        crawl_timeout: 10,
-      },
+      livecrawl: "web",
+      livecrawl_formats: ["markdown"],
+      crawl_timeout: 10,
     },
   },
 ];
 it.each(samples)(
-  "accepts SDK-backed $provider $capability controls",
+  "accepts provider-native $provider $capability controls",
   ({ provider, capability, options }) => {
     expect(() =>
       validateOptions(providers[provider], capability, options),
