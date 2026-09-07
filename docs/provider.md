@@ -160,6 +160,84 @@ Supports search. Set `SERPER_API_KEY`.
 web search "Node.js release notes" --provider serper
 ```
 
+## You.com
+
+Supports search. Set `YDC_API_KEY`; the library, CLI, and Pi extension use the
+same credential. No defaults change unless you select You.com.
+
+```sh
+web search "Node.js release notes" --provider youcom \
+  --freshness week --country US --language EN --include-domains nodejs.org
+web config default search youcom
+```
+
+You.com returns separate web and news sections. Webfox alternates results from
+these sections, starting with web and preserving each section's order, up to
+`maxResults` (capped at 100 overall). If one section is exhausted, the other fills
+the remaining slots. With `maxResults: 1`, web takes precedence. The `offset`
+option selects pages from each section independently, using the capped
+`maxResults` as the upstream page size.
+
+Use `include_domains` to restrict sources, or combine `exclude_domains` with
+`boost_domains` to exclude some sources and favor others. Don't combine
+`include_domains` with either of the other domain lists. Each list supports up to
+500 domains. Country and language codes use the API's uppercase spelling, such
+as `US`, `EN`, and `EN-GB`. Run `web search --provider youcom --help` for supported
+values and all native options.
+
+Search snippets already contain query-relevant passages. For full page content,
+enable live crawling:
+
+```sh
+web search "Node.js cancellation" --provider youcom \
+  --livecrawl web --livecrawl-formats markdown --crawl-timeout 10 --format json
+```
+
+Live crawling adds latency and per-page charges, including pages that don't fit
+within the final result limit. By default, it returns HTML; request `markdown` or
+both formats as needed. Full content is preserved in each result's
+`metadata.contents`; text output shows snippets rather than full pages. See
+[You.com's API reference](https://you.com/docs/api-reference/search/v1-search-post)
+for current pricing and filter behavior.
+
+Provider-specific defaults belong under `providers.youcom.options.search`:
+
+```yaml
+defaults:
+  search:
+    provider: youcom
+providers:
+  youcom:
+    options:
+      search:
+        country: US
+        language: EN
+        safesearch: moderate
+```
+
+`providers.youcom.baseUrl` optionally replaces the API origin for a proxy; webfox
+appends `/v1/search`. Credential overrides use `providers.youcom.credentials.api`.
+For example, `{env: MY_YOUCOM_KEY}` selects another environment variable.
+
+The TypeScript library accepts the same native option names:
+
+```ts
+import { createWebfox } from "webfox";
+
+const result = await createWebfox().search({
+  provider: "youcom",
+  queries: ["Node.js release notes"],
+  maxResults: 5,
+  options: { freshness: "week", include_domains: ["nodejs.org"] },
+});
+```
+
+The provider uses the JSON POST API directly, like the HTTP-based Brave and
+Serper providers. Option names follow the wire contract rather than the official
+You.com SDK's camelCase names. Selecting You.com as the search default exposes
+these options through the existing `web_search` Pi tool; no separate tool is
+needed.
+
 ## Tavily
 
 Supports search and page extraction. Set `TAVILY_API_KEY`.

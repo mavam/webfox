@@ -5,11 +5,12 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOptionFlags, runCli } from "../src/cli.js";
 import { customConfig } from "./helpers.js";
 const directories: string[] = [];
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await Promise.all(
     directories
       .splice(0)
@@ -58,6 +59,78 @@ async function cli(
   return { code, stdout, stderr };
 }
 describe("CLI contracts", () => {
+  it("exposes You.com native flags and forwards them through the public client", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "webfox-youcom-"));
+    directories.push(cwd);
+    const config = join(cwd, "config.yaml");
+    await writeFile(
+      config,
+      stringify({
+        providers: {
+          youcom: { credentials: { api: { value: "cli-test-key" } } },
+        },
+      }),
+    );
+    const fetch = vi.fn().mockResolvedValue(
+      Response.json({
+        results: {
+          web: [
+            {
+              title: "Example",
+              url: "https://example.com",
+              snippets: ["A passage"],
+              contents: { markdown: "# Full page" },
+            },
+          ],
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const result = await cli([
+      "search",
+      "example",
+      "--config",
+      config,
+      "--provider",
+      "youcom",
+      "--country",
+      "US",
+      "--language",
+      "EN",
+      "--freshness",
+      "week",
+      "--include-domains",
+      "example.com",
+      "--livecrawl",
+      "web",
+      "--livecrawl-formats",
+      "markdown",
+      "--crawl-timeout",
+      "10",
+      "--format",
+      "json",
+    ]);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
+      query: "example",
+      country: "US",
+      language: "EN",
+      freshness: "week",
+      include_domains: ["example.com"],
+      livecrawl: "web",
+      livecrawl_formats: ["markdown"],
+      crawl_timeout: 10,
+    });
+    expect(
+      JSON.parse(result.stdout).results[0].value.results[0].metadata.contents,
+    ).toEqual({ markdown: "# Full page" });
+    const help = await cli(["search", "--provider", "youcom", "--help"]);
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain("--livecrawl-formats");
+    expect(help.stdout).toContain("--boost-domains");
+    expect(help.stdout).not.toContain("--extraction");
+    expect(help.stdout).not.toContain("--knowledge");
+  });
   it.each(["claude", "codex"])(
     "rejects removed provider %s instead of falling back",
     async (provider) => {

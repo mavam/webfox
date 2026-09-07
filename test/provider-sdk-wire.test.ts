@@ -41,6 +41,29 @@ function client(provider: ProviderId) {
   });
 }
 
+it("forwards You.com's POST search controls through its HTTP adapter", async () => {
+  response = { results: { web: [], news: [] }, metadata: { query: "q" } };
+  const options = {
+    country: "US",
+    language: "EN",
+    livecrawl: "all",
+    livecrawl_formats: ["markdown"],
+    crawl_timeout: 10,
+    exclude_domains: ["spam.example.com"],
+    boost_domains: ["example.com"],
+  };
+  const result = await client("youcom").search({
+    provider: "youcom",
+    queries: ["q"],
+    maxResults: 3,
+    options,
+  });
+  expect(result.status).toBe("ok");
+  expect(requests).toEqual([
+    { path: "/v1/search", body: { query: "q", count: 3, ...options } },
+  ]);
+});
+
 it("forwards Firecrawl's distinct search and scrape location shapes through its SDK", async () => {
   response = { success: true, data: { web: [] } };
   const options = {

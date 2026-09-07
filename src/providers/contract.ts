@@ -105,6 +105,7 @@ export interface ProviderConfigMap {
   serper: import("./serper/types.js").Serper;
   tavily: import("./tavily/types.js").Tavily;
   valyu: import("./valyu/types.js").Valyu;
+  youcom: import("./youcom/types.js").Youcom;
 }
 export type ProviderConfig<T extends ProviderId = ProviderId> =
   ProviderConfigMap[T];

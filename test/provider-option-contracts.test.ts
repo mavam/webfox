@@ -121,9 +121,23 @@ const samples: Array<{
       } satisfies DeepResearchTools,
     },
   },
+  {
+    provider: "youcom",
+    capability: "search",
+    options: {
+      freshness: "week",
+      country: "US",
+      language: "EN",
+      safesearch: "moderate",
+      include_domains: ["example.com"],
+      livecrawl: "web",
+      livecrawl_formats: ["markdown"],
+      crawl_timeout: 10,
+    },
+  },
 ];
 it.each(samples)(
-  "accepts SDK-backed $provider $capability controls",
+  "accepts provider-native $provider $capability controls",
   ({ provider, capability, options }) => {
     expect(() =>
       validateOptions(providers[provider], capability, options),
