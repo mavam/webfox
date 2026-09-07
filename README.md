@@ -172,7 +172,7 @@ or, on Windows, `APPDATA`. Override it with `WEBFOX_CONFIG` or `--config <path>`
 For example:
 
 ```yaml
-$schema: https://unpkg.com/webfox@3.5.1/dist/config.schema.json
+$schema: https://unpkg.com/webfox@4.0.0/dist/config.schema.json
 defaults:
   search:
     provider: brave

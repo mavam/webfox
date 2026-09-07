@@ -16,7 +16,7 @@ import { renderSearchResult } from "./pi-search-render.js";
 
 const inputStates = {
   queued: { glyph: "●", color: "dim" },
-  running: { glyph: "▶︎", color: "warning" },
+  running: { glyph: "▶︎", color: "muted" },
   done: { glyph: "✔︎", color: "success" },
   failed: { glyph: "✘︎", color: "error" },
   cancelled: { glyph: "■", color: "dim" },
