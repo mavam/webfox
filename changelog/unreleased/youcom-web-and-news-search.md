@@ -2,10 +2,10 @@
 title: You.com web and news search
 type: feature
 authors:
-  - mavam
+  - mouse-value-add
 prs:
   - 40
-created: 2026-09-07T17:53:35.426084Z
+created: 2026-09-07T17:56:46.54333Z
 ---
 
 You can now use You.com for web and news search from the CLI, TypeScript library, and Pi extension. Set `YDC_API_KEY` and select the provider:
