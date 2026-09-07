@@ -1,0 +1,9 @@
+created: 2026-09-07
+title: Neutral progress glyph color
+intro: >-
+  Webfox now presents active pi extension progress with a neutral muted glyph instead
+  of a warning color. This release also aligns published schema links with the current
+  package version.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.0.0
