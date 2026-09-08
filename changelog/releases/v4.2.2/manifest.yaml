@@ -1,0 +1,8 @@
+created: 2026-09-08
+title: Readable quotes in tool input rows
+intro: >-
+  This release removes unnecessary JSON escape backslashes from quoted tool input
+  rows while preserving safe control-character escaping.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.2.1
