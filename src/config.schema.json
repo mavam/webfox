@@ -2115,7 +2115,7 @@
                               "type": "string"
                             }
                           },
-                          "description": "Request labels to attach to the Gemini call."
+                          "description": "Unsupported by the Gemini Developer API; requests with labels are rejected."
                         },
                         "temperature": {
                           "type": "number",

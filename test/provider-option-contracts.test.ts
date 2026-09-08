@@ -1,6 +1,4 @@
 import { expect, it } from "vitest";
-import type { GenerateContentConfig } from "@google/genai";
-import { ThinkingLevel } from "@google/genai";
 import type { SearchRequest, ScrapeOptions } from "@mendable/firecrawl-js";
 import type { TavilySearchOptions, TavilyExtractOptions } from "@tavily/core";
 import type { SearchParams } from "parallel-web/resources/top-level";
@@ -12,8 +10,8 @@ import type { Capability, ProviderId } from "../src/domain.js";
 import { providers } from "../src/providers/registry.js";
 import { validateOptions } from "../src/configuration/planning.js";
 
-// SDK type checks catch upstream removals/renames; runtime checks catch drift
-// between those types and the schemas actually exposed to callers.
+// SDK type checks catch upstream removals/renames where a provider uses an SDK;
+// runtime checks validate samples against the schemas exposed to callers.
 const samples: Array<{
   provider: ProviderId;
   capability: Capability;
@@ -24,9 +22,9 @@ const samples: Array<{
     capability: "answer",
     options: {
       config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+        thinkingConfig: { thinkingLevel: "HIGH" },
         maxOutputTokens: 1024,
-      } satisfies GenerateContentConfig,
+      },
     },
   },
   {

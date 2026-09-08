@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { httpError } from "../../errors.js";
 
 import { executeAsyncResearch } from "../../runtime/polling.js";
 import type {
@@ -19,7 +19,6 @@ export const geminiImplementation = {
     context: ProviderContext,
     options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
-    const ai = this.createClient(config);
     const request = buildGeminiGenerateContentRequest({
       defaultModel: DEFAULT_ANSWER_MODEL,
       prompt: query,
@@ -27,17 +26,32 @@ export const geminiImplementation = {
       toolConfig: { googleSearch: {} },
     });
 
-    const response = await ai.models.generateContent({
-      model: request.model,
-      contents: request.contents,
-      config: addAbortSignalToGeminiConfig(request.config, context.signal),
-    });
-
-    const lines: string[] = [];
-    lines.push(response.text?.trim() || "No answer returned.");
+    const response = await requestGemini(
+      `models/${encodeURIComponent(request.model.replace(/^models\//, ""))}:generateContent`,
+      config,
+      context,
+      request.body,
+    );
+    const candidate = Array.isArray(response.candidates)
+      ? asRecord(response.candidates[0])
+      : {};
+    const parts = asRecord(candidate.content).parts;
+    const text = Array.isArray(parts)
+      ? parts
+          .filter(
+            (part) =>
+              isPlainObject(part) &&
+              !part.thought &&
+              typeof part.text === "string",
+          )
+          .map((part) => part.text)
+          .join("")
+          .trim()
+      : "";
+    const lines: string[] = [text || "No answer returned."];
 
     const sources = extractGroundingSources(
-      response.candidates?.[0]?.groundingMetadata?.groundingChunks,
+      asRecord(candidate.groundingMetadata).groundingChunks,
     );
     if (sources.length > 0) {
       lines.push("");
@@ -80,19 +94,25 @@ export const geminiImplementation = {
     context: ProviderContext,
     options?: Record<string, unknown>,
   ): Promise<ResearchJob> {
-    const ai = this.createClient(config);
     const requestOptions = getGeminiResearchRequestOptions(options);
-    const interaction = await ai.interactions.create(
+    const interaction = await requestGemini(
+      "interactions",
+      config,
+      context,
       {
         ...requestOptions,
         input,
         agent: DEFAULT_RESEARCH_AGENT,
         background: true,
       },
-      buildGeminiRequestOptions(context.signal, context.idempotencyKey),
+      context.idempotencyKey,
     );
 
-    return { id: interaction.id };
+    const id = readNonEmptyString(interaction.id);
+    if (!id) {
+      throw new Error("Gemini research response is missing an interaction ID.");
+    }
+    return { id };
   },
 
   async pollResearch(
@@ -101,11 +121,10 @@ export const geminiImplementation = {
     context: ProviderContext,
     _options?: Record<string, unknown>,
   ): Promise<ResearchPollResult> {
-    const ai = this.createClient(config);
-    const interaction = await ai.interactions.get(
-      id,
-      undefined,
-      buildGeminiRequestOptions(context.signal),
+    const interaction = await requestGemini(
+      `interactions/${encodeURIComponent(id)}`,
+      config,
+      context,
     );
 
     const status = readNonEmptyString(interaction.status) ?? "unknown";
@@ -153,43 +172,56 @@ export const geminiImplementation = {
       ? { status: "in_progress" }
       : { status: "in_progress", statusText: status };
   },
-
-  createClient(config: Gemini): GoogleGenAI {
-    const apiKey = config.credentials?.api;
-    if (!apiKey) {
-      throw new Error("is missing an API key");
-    }
-
-    return new GoogleGenAI({
-      httpOptions: { retryOptions: { attempts: 1 } },
-      apiKey,
-    });
-  },
 };
 
-function buildGeminiRequestOptions(
-  signal: AbortSignal | undefined,
+// Keep retries in Webfox's runtime, not in the transport: submissions can bill.
+async function requestGemini(
+  path: string,
+  config: Gemini,
+  context: ProviderContext,
+  body?: Record<string, unknown>,
   idempotencyKey?: string,
-) {
-  return {
-    maxRetries: 0,
-    ...(signal ? { signal } : {}),
-    ...(idempotencyKey ? { idempotencyKey } : {}),
-  };
+): Promise<Record<string, unknown>> {
+  const apiKey = config.credentials?.api;
+  if (!apiKey) throw new Error("is missing an API key");
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/${path}`,
+    {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": apiKey,
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: context.signal,
+    },
+  );
+  if (!response.ok) {
+    const text = (await response.text()).trim();
+    let detail = text;
+    try {
+      const error = asRecord(asRecord(JSON.parse(text)).error);
+      detail = readNonEmptyString(error.message) ?? text;
+    } catch {
+      // Proxies may return plain text rather than a Google JSON error.
+    }
+    detail = detail.replaceAll(apiKey, "[redacted]").slice(0, 1000);
+    throw httpError(
+      response,
+      `Gemini API request failed (${response.status})${detail ? `: ${detail}` : "."}`,
+    );
+  }
+  const payload: unknown = await response.json();
+  if (!isPlainObject(payload)) {
+    throw new Error("Gemini API returned an invalid response.");
+  }
+  return payload;
 }
 
-function addAbortSignalToGeminiConfig(
-  config: Record<string, unknown> | undefined,
-  signal: AbortSignal | undefined,
-): Record<string, unknown> | undefined {
-  if (!signal) {
-    return config;
-  }
-
-  return {
-    ...(config ?? {}),
-    abortSignal: signal,
-  };
+function asRecord(value: unknown): Record<string, unknown> {
+  return isPlainObject(value) ? value : {};
 }
 
 function readInteractionSteps(interaction: unknown): unknown {
@@ -338,20 +370,37 @@ function buildGeminiGenerateContentRequest({
   toolConfig: { googleSearch: {} };
 }): {
   model: string;
-  contents: string;
-  config: Record<string, unknown>;
+  body: Record<string, unknown>;
 } {
   const requestOptions = isPlainObject(options) ? options : {};
   const explicitConfig = isPlainObject(requestOptions.config)
     ? requestOptions.config
     : {};
 
+  // Labels were rejected by the SDK for the Developer API too.
+  if (explicitConfig.labels !== undefined) {
+    throw new Error(
+      "Gemini answer config.labels is not supported by the Gemini Developer API.",
+    );
+  }
+  const generationConfig = Object.fromEntries(
+    [
+      "thinkingConfig",
+      "temperature",
+      "topP",
+      "topK",
+      "candidateCount",
+      "maxOutputTokens",
+    ]
+      .filter((key) => explicitConfig[key] !== undefined)
+      .map((key) => [key, explicitConfig[key]]),
+  );
   return {
     model: readNonEmptyString(requestOptions.model) ?? defaultModel,
-    contents: prompt,
-    config: {
-      ...explicitConfig,
+    body: {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
       tools: [toolConfig],
+      ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
     },
   };
 }
