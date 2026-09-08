@@ -14,6 +14,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
 const paths: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
   await Promise.all(
     paths.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
@@ -181,6 +182,68 @@ it("rejects misplaced provider parameters before execution with a repair hint", 
   );
   expect(execute).not.toHaveBeenCalled();
 });
+
+it.each([
+  ["malformed YAML", "providers: [private-secret", "Invalid YAML"],
+  ["invalid schema", "defaults: false", "Invalid"],
+  [
+    "invalid provider options",
+    "providers:\n  exa:\n    options:\n      search:\n        type: private-secret\n",
+    "/providers/exa/options/search/type",
+  ],
+  [
+    "unsupported default capability",
+    "defaults:\n  search:\n    provider: brave\n  research:\n    provider: serper\n",
+    "/defaults/research/provider",
+  ],
+  ["missing explicit file", undefined, "Could not read configuration"],
+])(
+  "disables the extension for %s without blocking startup",
+  async (_name, config, diagnostic) => {
+    const directory = await mkdtemp(join(tmpdir(), "web-pi-invalid-"));
+    paths.push(directory);
+    const path = join(directory, "config.yaml");
+    if (config !== undefined) await writeFile(path, config);
+    vi.stubEnv("WEBFOX_CONFIG", path);
+    const notify = vi.fn();
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    const registerTool = vi.fn();
+    const events: Record<string, (...args: any[]) => any> = {};
+    const pi = {
+      registerTool,
+      on: (name: string, handler: any) => {
+        events[name] = handler;
+      },
+    } as any;
+
+    expect(() => webExtension(pi)).not.toThrow();
+    expect(registerTool).not.toHaveBeenCalled();
+    expect(Object.keys(events)).toEqual(["session_start"]);
+    expect(stderr).not.toHaveBeenCalled();
+    events.session_start({}, { hasUI: true, ui: { notify } });
+    expect(notify).toHaveBeenCalledExactlyOnceWith(
+      expect.stringMatching(/^✘︎ Web extension disabled: /),
+      "error",
+    );
+    const message = notify.mock.calls[0][0];
+    expect(message).toContain(diagnostic);
+    expect(message.match(/✘︎/g)).toHaveLength(1);
+    expect(message).toContain("restart pi or run /reload");
+    expect(message).not.toContain("private-secret");
+    expect(stderr).not.toHaveBeenCalled();
+    // Print/JSON modes must report on stderr without relying on UI or polluting stdout.
+    events.session_start({}, { hasUI: false });
+    expect(stderr).toHaveBeenCalledExactlyOnceWith(message);
+    expect(stdout).not.toHaveBeenCalled();
+
+    // A fresh extension load after repair must register tools normally.
+    await writeFile(path, "defaults:\n  search:\n    provider: brave\n");
+    webExtension(pi);
+    expect(registerTool).toHaveBeenCalledOnce();
+    expect(registerTool.mock.calls[0][0].name).toBe("web_search");
+  },
+);
 
 it("keeps unconfigured notifications generic", async () => {
   const directory = await mkdtemp(join(tmpdir(), "web-pi-"));
