@@ -9,7 +9,7 @@ const root = resolve(import.meta.dirname, "..");
 const sourcePackageJson = JSON.parse(
   await readFile(join(root, "package.json"), "utf8"),
 );
-const expectedSchemaUrl = `https://unpkg.com/${sourcePackageJson.name}@${sourcePackageJson.version}/dist/config.schema.json`;
+const expectedSchemaUrl = `https://unpkg.com/${sourcePackageJson.name}@latest/dist/config.schema.json`;
 const directory = await mkdtemp(join(tmpdir(), "webfox-package-smoke-"));
 let archive;
 
@@ -60,7 +60,7 @@ try {
       [
         'const library = await import("webfox");',
         'if (typeof library.createWebfox !== "function") throw new Error("missing createWebfox");',
-        `if (library.CONFIG_SCHEMA_URL !== ${JSON.stringify(expectedSchemaUrl)}) throw new Error("library schema version does not match package metadata");`,
+        `if (library.CONFIG_SCHEMA_URL !== ${JSON.stringify(expectedSchemaUrl)}) throw new Error("library schema URL does not target latest");`,
       ].join("\n"),
     ],
     { cwd: directory, stdio: "inherit" },
@@ -90,7 +90,7 @@ try {
     ),
   );
   if (schema.$id !== expectedSchemaUrl)
-    throw new Error("packed schema version does not match package metadata");
+    throw new Error("packed schema URL does not target latest");
   for (const reference of [
     "reference.md",
     "cli-experience.md",
