@@ -30,3 +30,36 @@ it("inspects supported providers and exact schemas without loading their SDKs", 
   ).toHaveProperty("searchContextSize");
   expect(client.inspectCapability("answer").provider).toBeUndefined();
 });
+it("still redacts credentials from inspected default values", () => {
+  const secret = "inspection-test-secret";
+  const client = createWebfox({
+    config: {
+      providers: {
+        openai: { options: { answer: { model: secret } } },
+      },
+    },
+    env: { OPENAI_API_KEY: secret },
+  });
+  const inspection = client.inspectCapability("answer", "openai");
+  expect(inspection.defaults.options.model).toBe("[redacted]");
+  expect(JSON.stringify(inspection)).not.toContain(secret);
+});
+it("keeps token-budget option schemas intact during inspection", () => {
+  const client = createWebfox({
+    config: { defaults: { search: { provider: "brave" } } },
+    env: { BRAVE_SEARCH_API_KEY: "brave-search-secret" },
+  });
+  expect(client.inspectCapability("search").optionSchema).toMatchObject({
+    properties: {
+      llmContext: {
+        properties: {
+          maximum_number_of_tokens: { type: "integer", minimum: 1 },
+          maximum_number_of_tokens_per_url: {
+            type: "integer",
+            minimum: 1,
+          },
+        },
+      },
+    },
+  });
+});
