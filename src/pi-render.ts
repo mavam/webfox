@@ -60,7 +60,7 @@ function statusRows(details: unknown): InputStatus[] | undefined {
 
 /** Display-only input formatting; never interpret input as terminal markup. */
 function displayInput(value: string): string {
-  return JSON.stringify(plainText(value)).slice(1, -1);
+  return JSON.stringify(plainText(value)).slice(1, -1).replaceAll('\\"', '"');
 }
 
 export class WebCall implements Component {
