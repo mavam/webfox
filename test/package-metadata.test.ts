@@ -26,11 +26,11 @@ describe("package metadata", () => {
       expect(packageJson.bundledDependencies ?? []).not.toContain(peer);
     }
   });
-  it("keeps runtime and static schema URLs aligned with package.json", async () => {
+  it("keeps schema URLs on latest independently of the package version", async () => {
     const packageJson = JSON.parse(
       await readFile(resolve("package.json"), "utf8"),
     );
-    const expectedSchemaUrl = `https://unpkg.com/${packageJson.name}@${packageJson.version}/dist/config.schema.json`;
+    const expectedSchemaUrl = `https://unpkg.com/${packageJson.name}@latest/dist/config.schema.json`;
 
     expect(packageJson.name).toBe("webfox");
     expect(packageJson.bin).toEqual({ web: "./dist/cli.js" });

@@ -174,28 +174,31 @@ export function createWebfox(options: CreateWebfoxOptions = {}): WebfoxClient {
           },
         };
       const definition = selectProvider(config, capability, selected);
-      return outward.value({
+      const defaults = outward.value({
+        options: effectiveOptions(
+          config,
+          definition,
+          capability,
+          {},
+          "defaults",
+        ),
+        ...(capability === "search"
+          ? { maxResults: config.defaults?.search?.maxResults ?? 5 }
+          : {}),
+      });
+      return {
         capability,
         provider: selected,
         configured: configured(definition, capability),
+        // Static provider schemas contain no credentials. Redacting property
+        // names such as maximum_number_of_tokens would invalidate the schema.
         optionSchema: optionSchema(
           definition,
           capability,
           "defaults",
         ) as unknown as Record<string, unknown> | undefined,
-        defaults: {
-          options: effectiveOptions(
-            config,
-            definition,
-            capability,
-            {},
-            "defaults",
-          ),
-          ...(capability === "search"
-            ? { maxResults: config.defaults?.search?.maxResults ?? 5 }
-            : {}),
-        },
-      });
+        defaults,
+      };
     },
   };
 }

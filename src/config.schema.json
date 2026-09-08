@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/webfox@4.0.1/dist/config.schema.json",
+  "$id": "https://unpkg.com/webfox@latest/dist/config.schema.json",
   "title": "webfox configuration",
   "type": "object",
   "additionalProperties": false,
