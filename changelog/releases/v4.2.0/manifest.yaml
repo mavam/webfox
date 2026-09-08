@@ -1,0 +1,9 @@
+created: 2026-09-08
+title: More reliable Pi integration and configuration
+intro: >-
+  Webfox now keeps Pi usable when configuration is invalid while preserving provider
+  option schemas for reliable tool requests. It also publishes a stable configuration
+  schema URL so editors can track the latest release automatically.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.1.0
