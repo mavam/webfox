@@ -1,11 +1,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   adapter,
-  geminiImplementation,
+  geminiImplementation as provider,
 } from "../src/providers/gemini/adapter.js";
 import { createWebfox, parseConfig } from "../src/index.js";
-import type { Gemini } from "../src/providers/gemini/types.js";
+import { asWebfoxError } from "../src/errors.js";
 import type { ProviderContext } from "../src/providers/contract.js";
+
+const config = { credentials: { api: "literal-key" } };
+const context: ProviderContext = { cwd: process.cwd() };
+const base = "https://generativelanguage.googleapis.com/v1beta/";
+
+function mockResponse(payload: unknown) {
+  const fetchMock = vi.fn().mockResolvedValue(Response.json(payload));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function requestBody(fetchMock: ReturnType<typeof mockResponse>) {
+  return JSON.parse(fetchMock.mock.calls[0]![1].body);
+}
+
+function answerPayload(text = "Answer") {
+  return { candidates: [{ content: { parts: [{ text }] } }] };
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -13,20 +31,21 @@ afterEach(() => {
 });
 
 describe("Gemini capability boundaries", () => {
-  it("offers answers and research, not standalone search", async () => {
+  it("offers answers and research, not standalone search or contents", async () => {
     const client = createWebfox({
       config: {},
       env: { GOOGLE_API_KEY: "test-key" },
     });
-    const provider = client.getProvider("gemini")!;
-    expect(provider.capabilities).toEqual(["answer", "research"]);
-    expect(provider.configured).toEqual(["answer", "research"]);
+    const info = client.getProvider("gemini")!;
+    expect(info.capabilities).toEqual(["answer", "research"]);
+    expect(info.configured).toEqual(["answer", "research"]);
     expect("search" in adapter).toBe(false);
-    expect("search" in geminiImplementation).toBe(false);
+    expect("contents" in provider).toBe(false);
     await expect(
       client.search({ provider: "gemini", queries: ["test"] }),
     ).rejects.toThrow("does not support search");
   });
+
   it("rejects obsolete Gemini search configuration", () => {
     expect(() =>
       createWebfox({
@@ -39,371 +58,358 @@ describe("Gemini capability boundaries", () => {
   });
 });
 
-describe("Gemini provider answer", () => {
+describe("Gemini HTTP answers", () => {
   it("defaults to Gemini 3.8 Flash with Google Search grounding", async () => {
-    const generateContent = vi
-      .fn()
-      .mockResolvedValue({ text: "Answer", candidates: [] });
-    const provider = createProvider({ models: { generateContent } });
-    await provider.answer("Question", createConfig(), createContext());
-    expect(generateContent).toHaveBeenCalledWith({
-      model: "gemini-3.8-flash",
-      contents: "Question",
-      config: { tools: [{ googleSearch: {} }] },
+    const fetchMock = mockResponse(answerPayload());
+    expect(await provider.answer("Question", config, context)).toEqual({
+      provider: "gemini",
+      text: "Answer",
+      itemCount: 0,
     });
-    const client = createWebfox({ config: {}, env: {} });
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+      `${base}models/gemini-3.8-flash:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-goog-api-key": "literal-key",
+        },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "Question" }] }],
+          tools: [{ googleSearch: {} }],
+        }),
+        signal: undefined,
+      },
+    );
     expect(
-      client.inspectCapability("answer", "gemini").defaults.options?.model,
+      createWebfox({ config: {}, env: {} }).inspectCapability(
+        "answer",
+        "gemini",
+      ).defaults.options?.model,
     ).toBe("gemini-3.8-flash");
   });
-  it("supports provider-specific request options for answers while keeping Google Search grounding enabled", async () => {
-    const generateContent = vi.fn().mockResolvedValue({
-      text: "Grounded answer",
-      candidates: [],
-    });
 
-    const provider = createProvider({ models: { generateContent } });
-    await provider.answer("What changed?", createConfig(), createContext(), {
-      model: "gemini-2.5-pro",
-      config: {
-        labels: {
-          route: "answer",
-        },
-        temperature: 0.1,
-        tools: [{ urlContext: {} }],
-      },
+  it("maps supported generation options and keeps grounding enabled", async () => {
+    const fetchMock = mockResponse(answerPayload());
+    const generationConfig = {
+      thinkingConfig: { thinkingLevel: "HIGH", includeThoughts: true },
+      temperature: 0,
+      topP: 0.8,
+      topK: 10,
+      candidateCount: 1,
+      maxOutputTokens: 512,
+    };
+    await provider.answer("Question", config, context, {
+      model: "models/gemini-2.5-pro",
+      config: { ...generationConfig, tools: [{ urlContext: {} }] },
     });
-
-    expect(generateContent).toHaveBeenCalledWith({
-      model: "gemini-2.5-pro",
-      contents: "What changed?",
-      config: {
-        labels: {
-          route: "answer",
-        },
-        temperature: 0.1,
-        tools: [{ googleSearch: {} }],
-      },
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      `${base}models/gemini-2.5-pro:generateContent`,
+    );
+    expect(requestBody(fetchMock)).toEqual({
+      contents: [{ role: "user", parts: [{ text: "Question" }] }],
+      tools: [{ googleSearch: {} }],
+      generationConfig,
     });
   });
 
-  it("suppresses opaque grounding redirect URLs and dedupes source display", async () => {
-    const provider = createProvider({
-      models: {
-        generateContent: vi.fn().mockResolvedValue({
-          text: "ACME platforms help teams route and transform operational data.",
-          candidates: [
-            {
-              groundingMetadata: {
-                groundingChunks: [
-                  {
-                    web: {
-                      title: "ACME overview",
-                      uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/opaque-1",
-                    },
-                  },
-                  {
-                    web: {
-                      title: "ACME docs",
-                      uri: "https://example.com/docs",
-                    },
-                  },
-                  {
-                    web: {
-                      title: "ACME overview",
-                      uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/opaque-2",
-                    },
-                  },
-                ],
-              },
-            },
-          ],
-        }),
-      },
-    });
-
-    const response = await provider.answer(
-      "ACME platform use cases",
-      createConfig(),
-      createContext(),
-      undefined,
-    );
-
-    expect(response.text).toContain(
-      "ACME platforms help teams route and transform operational data.",
-    );
-    expect(response.text).toContain("Sources:\n1. ACME overview\n2. ACME docs");
-    expect(response.text).toContain("   https://example.com/docs");
-    expect(response.text).not.toContain("vertexaisearch.cloud.google.com");
-    expect(response.itemCount).toBe(2);
-  });
-});
-
-it("does not expose a contents handler", () => {
-  expect("contents" in geminiImplementation).toBe(false);
-});
-
-describe("Gemini provider research", () => {
-  it("starts Gemini deep research with supported request options", async () => {
-    const create = vi.fn().mockResolvedValue({ id: "research-1" });
-
-    const provider = createProvider({
-      interactions: {
-        create,
-      },
-    });
-
-    const job = await provider.startResearch!(
-      "Investigate ACME platform use cases",
-      createConfig(),
-      { ...createContext(), idempotencyKey: "stable-key" },
-      undefined,
-    );
-
-    expect(job).toEqual({ id: "research-1" });
-    expect(create).toHaveBeenCalledWith(
-      {
-        input: "Investigate ACME platform use cases",
-        agent: "deep-research-preview-04-2026",
-        background: true,
-      },
-      { idempotencyKey: "stable-key", maxRetries: 0 },
-    );
-  });
-
-  it("rejects unsupported Gemini deep-research options", async () => {
-    const create = vi.fn().mockResolvedValue({ id: "research-1" });
-    const provider = createProvider({ interactions: { create } });
-
+  it("preserves the SDK's rejection of Developer API labels", async () => {
+    const fetchMock = mockResponse({});
     await expect(
-      provider.startResearch!(
-        "Investigate ACME platform use cases",
-        createConfig(),
-        createContext(),
-        { tools: [] },
-      ),
-    ).rejects.toThrow("Unsupported Gemini research options: tools.");
-    expect(create).not.toHaveBeenCalled();
+      provider.answer("Question", config, context, {
+        config: { labels: { route: "answer" } },
+      }),
+    ).rejects.toThrow("config.labels is not supported");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rejects unsupported Gemini deep-research agent configuration", async () => {
-    const create = vi.fn().mockResolvedValue({ id: "research-1" });
-    const provider = createProvider({ interactions: { create } });
-
-    await expect(
-      provider.startResearch!(
-        "Investigate ACME platform use cases",
-        createConfig(),
-        createContext(),
+  it("joins text from the first candidate and excludes thoughts and non-text parts", async () => {
+    mockResponse({
+      candidates: [
         {
-          agent_config: {
-            response_length: "short",
+          content: {
+            parts: [
+              { text: "Private", thought: true },
+              { text: "Hello " },
+              { inlineData: {} },
+              { text: "world" },
+            ],
           },
         },
-      ),
-    ).rejects.toThrow(
-      "Unsupported Gemini agent_config options: response_length.",
-    );
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it("forwards supported Gemini deep-research agent configuration", async () => {
-    const create = vi.fn().mockResolvedValue({ id: "research-1" });
-
-    const provider = createProvider({
-      interactions: {
-        create,
-      },
+        { content: { parts: [{ text: "Alternative" }] } },
+      ],
     });
-
-    await provider.startResearch!(
-      "Investigate ACME platform use cases",
-      createConfig(),
-      createContext(),
-      {
-        agent_config: {
-          thinking_summaries: "auto",
-        },
-      },
-    );
-
-    expect(create).toHaveBeenCalledWith(
-      {
-        agent_config: {
-          type: "deep-research",
-          thinking_summaries: "auto",
-        },
-        input: "Investigate ACME platform use cases",
-        agent: "deep-research-preview-04-2026",
-        background: true,
-      },
-      { maxRetries: 0 },
+    expect((await provider.answer("Question", config, context)).text).toBe(
+      "Hello world",
     );
   });
 
-  it("returns in-progress Gemini research status from polling", async () => {
-    const get = vi.fn().mockResolvedValue({ status: "in_progress" });
-
-    const provider = createProvider({
-      interactions: {
-        get,
-      },
-    });
-
-    const result = await provider.pollResearch!(
-      "research-1",
-      createConfig(),
-      createContext(),
-      undefined,
+  it.each([
+    {},
+    { candidates: [] },
+    { candidates: [{ content: { parts: [{ text: " " }] } }] },
+  ])("handles empty answer content", async (payload) => {
+    mockResponse(payload);
+    expect((await provider.answer("Question", config, context)).text).toBe(
+      "No answer returned.",
     );
-
-    expect(get).toHaveBeenCalledWith("research-1", undefined, {
-      maxRetries: 0,
-    });
-    expect(result).toEqual({ status: "in_progress" });
   });
 
-  it("formats completed Gemini research output from polling", async () => {
-    const get = vi.fn().mockResolvedValue({
-      status: "completed",
-      steps: [
-        { type: "user_input" },
+  it("suppresses opaque grounding redirects, deduplicates sources, and caps them at five", async () => {
+    mockResponse({
+      candidates: [
         {
-          type: "model_output",
-          content: [{ type: "text", text: "Research result" }],
+          content: { parts: [{ text: "Grounded answer" }] },
+          groundingMetadata: {
+            groundingChunks: [
+              {
+                web: {
+                  title: "ACME overview",
+                  uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/opaque-1",
+                },
+              },
+              { web: { title: "ACME docs", uri: "https://example.com/docs" } },
+              {
+                web: {
+                  title: "ACME overview",
+                  uri: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/opaque-2",
+                },
+              },
+              ...Array.from({ length: 6 }, (_, i) => ({
+                web: { title: `Source ${i}`, uri: `https://example.com/${i}` },
+              })),
+            ],
+          },
         },
       ],
     });
-
-    const provider = createProvider({
-      interactions: {
-        get,
-      },
-    });
-
-    const result = await provider.pollResearch!(
-      "research-1",
-      createConfig(),
-      createContext(),
-      undefined,
+    const result = await provider.answer("Question", config, context);
+    expect(result.text).toContain(
+      "Grounded answer\n\nSources:\n1. ACME overview\n2. ACME docs\n   https://example.com/docs",
     );
-
-    expect(result).toEqual({
-      status: "completed",
-      output: {
-        provider: "gemini",
-        text: "Research result",
-      },
-    });
-  });
-
-  it("maps failed Gemini research polling to a terminal status", async () => {
-    const get = vi.fn().mockResolvedValue({ status: "failed" });
-
-    const provider = createProvider({
-      interactions: {
-        get,
-      },
-    });
-
-    const result = await provider.pollResearch!(
-      "research-1",
-      createConfig(),
-      createContext(),
-      undefined,
-    );
-
-    expect(result).toEqual({
-      status: "failed",
-      error: "research failed",
-    });
-  });
-
-  it("surfaces unknown Gemini research states as progress text", async () => {
-    const get = vi.fn().mockResolvedValue({ status: "running" });
-
-    const provider = createProvider({
-      interactions: {
-        get,
-      },
-    });
-
-    const result = await provider.pollResearch!(
-      "research-1",
-      createConfig(),
-      createContext(),
-      undefined,
-    );
-
-    expect(result).toEqual({
-      status: "in_progress",
-      statusText: "running",
-    });
-  });
-
-  it("treats incomplete Gemini research as terminal failure", async () => {
-    const get = vi.fn().mockResolvedValue({ status: "incomplete" });
-
-    const provider = createProvider({
-      interactions: {
-        get,
-      },
-    });
-
-    const result = await provider.pollResearch!(
-      "research-1",
-      createConfig(),
-      createContext(),
-      undefined,
-    );
-
-    expect(result).toEqual({
-      status: "failed",
-      error: "research ended incomplete",
-    });
-  });
-
-  it("treats requires_action Gemini research as terminal failure", async () => {
-    const get = vi.fn().mockResolvedValue({
-      status: "requires_action",
-      steps: [{ type: "user_input" }, { type: "function_call" }],
-    });
-
-    const provider = createProvider({
-      interactions: {
-        get,
-      },
-    });
-
-    const result = await provider.pollResearch!(
-      "research-1",
-      createConfig(),
-      createContext(),
-      undefined,
-    );
-
-    expect(result).toEqual({
-      status: "failed",
-      error: "research requires additional action (function_call)",
-    });
+    expect(result.text).not.toContain("vertexaisearch.cloud.google.com");
+    expect(result.text).not.toContain("Source 3");
+    expect(result.itemCount).toBe(5);
   });
 });
 
-function createProvider(client: unknown) {
-  return {
-    ...geminiImplementation,
-    createClient: () => client,
-  } as typeof geminiImplementation;
-}
+describe("Gemini HTTP research", () => {
+  it("submits background research with an idempotency header", async () => {
+    const fetchMock = mockResponse({ id: "research-1" });
+    const result = await provider.startResearch("Investigate ACME", config, {
+      ...context,
+      idempotencyKey: "stable-key",
+    });
+    expect(result).toEqual({ id: "research-1" });
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(`${base}interactions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": "literal-key",
+        "Idempotency-Key": "stable-key",
+      },
+      body: JSON.stringify({
+        input: "Investigate ACME",
+        agent: "deep-research-preview-04-2026",
+        background: true,
+      }),
+      signal: undefined,
+    });
+  });
 
-function createConfig(): Gemini {
-  return {
-    credentials: { api: "literal-key" },
-  };
-}
+  it("forwards supported agent configuration", async () => {
+    const fetchMock = mockResponse({ id: "research-1" });
+    await provider.startResearch("Question", config, context, {
+      agent_config: { thinking_summaries: "auto" },
+    });
+    expect(requestBody(fetchMock)).toEqual({
+      agent_config: { type: "deep-research", thinking_summaries: "auto" },
+      input: "Question",
+      agent: "deep-research-preview-04-2026",
+      background: true,
+    });
+  });
 
-function createContext(): ProviderContext {
-  return {
-    cwd: process.cwd(),
-  };
-}
+  it.each([
+    [{ tools: [] }, "Unsupported Gemini research options: tools."],
+    [
+      { agent_config: { response_length: "short" } },
+      "Unsupported Gemini agent_config options: response_length.",
+    ],
+    [
+      { agent_config: { thinking_summaries: "invalid" } },
+      "must be 'auto' or 'none'",
+    ],
+  ])(
+    "rejects unsupported research options before fetching",
+    async (options, message) => {
+      const fetchMock = mockResponse({});
+      await expect(
+        provider.startResearch("Question", config, context, options),
+      ).rejects.toThrow(message);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([{}, { id: "" }, { id: 42 }])(
+    "rejects a missing interaction ID",
+    async (payload) => {
+      mockResponse(payload);
+      await expect(
+        provider.startResearch("Question", config, context),
+      ).rejects.toThrow("missing an interaction ID");
+    },
+  );
+
+  it("polls an encoded interaction ID without a body or idempotency header", async () => {
+    const fetchMock = mockResponse({ status: "in_progress" });
+    expect(
+      await provider.pollResearch("job/with?special#chars", config, {
+        ...context,
+        idempotencyKey: "unused",
+      }),
+    ).toEqual({ status: "in_progress" });
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+      `${base}interactions/job%2Fwith%3Fspecial%23chars`,
+      {
+        method: "GET",
+        headers: {
+          "content-type": "application/json",
+          "x-goog-api-key": "literal-key",
+        },
+        signal: undefined,
+      },
+    );
+  });
+
+  it("formats completed research from model-output steps only", async () => {
+    mockResponse({
+      status: "completed",
+      steps: [
+        { type: "user_input", content: [{ type: "text", text: "Question" }] },
+        { type: "thought", content: [{ type: "text", text: "Private" }] },
+        {
+          type: "model_output",
+          content: [
+            { type: "text", text: " Report " },
+            { type: "image" },
+            { type: "text", text: "Conclusion" },
+          ],
+        },
+      ],
+    });
+    expect(await provider.pollResearch("job", config, context)).toEqual({
+      status: "completed",
+      output: { provider: "gemini", text: "Report\n\nConclusion" },
+    });
+  });
+
+  it.each([
+    ["failed", { status: "failed", error: "research failed" }],
+    ["cancelled", { status: "cancelled", error: "research was canceled" }],
+    ["incomplete", { status: "failed", error: "research ended incomplete" }],
+    [
+      "requires_action",
+      {
+        status: "failed",
+        error: "research requires additional action (function_call)",
+      },
+    ],
+    ["running", { status: "in_progress", statusText: "running" }],
+  ])("maps research status %s", async (status, expected) => {
+    mockResponse({
+      status,
+      steps: [{ type: "user_input" }, { type: "function_call" }],
+    });
+    expect(await provider.pollResearch("job", config, context)).toEqual(
+      expected,
+    );
+  });
+});
+
+describe("Gemini HTTP failures and cancellation", () => {
+  const operations = [
+    (ctx: ProviderContext) => provider.answer("Question", config, ctx),
+    (ctx: ProviderContext) => provider.startResearch("Question", config, ctx),
+    (ctx: ProviderContext) => provider.pollResearch("job", config, ctx),
+  ];
+
+  it.each(operations)(
+    "forwards abort signals without retrying",
+    async (operation) => {
+      const controller = new AbortController();
+      const error = new DOMException("Aborted", "AbortError");
+      const fetchMock = vi.fn().mockImplementation(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener("abort", () => reject(error), {
+              once: true,
+            });
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const pending = operation({ ...context, signal: controller.signal });
+      controller.abort();
+      await expect(pending).rejects.toBe(error);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0]![1].signal).toBe(controller.signal);
+      expect(asWebfoxError(error).code).toBe("CANCELLED");
+    },
+  );
+
+  it.each([400, 401, 403, 408, 429, 500, 503])(
+    "classifies HTTP %s without transport retries",
+    async (status) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ error: { message: "Request failed" } }, { status }),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(
+        provider.startResearch("Question", config, context),
+      ).rejects.toMatchObject({
+        code: "PROVIDER_FAILURE",
+        message: `Gemini API request failed (${status}): Request failed`,
+        options: { retryable: [408, 429, 500, 503].includes(status) },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("handles plain-text errors and bounds and redacts their details", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(`literal-key ${"x".repeat(2000)}`, { status: 502 }),
+        ),
+    );
+    const error = await provider
+      .pollResearch("job", config, context)
+      .catch(asWebfoxError);
+    expect(error).toMatchObject({
+      code: "PROVIDER_FAILURE",
+      options: { retryable: true },
+    });
+    expect((error as Error).message).toContain("[redacted]");
+    expect((error as Error).message).not.toContain("literal-key");
+    expect((error as Error).message.length).toBeLessThan(1100);
+  });
+
+  it("rejects invalid JSON response shapes", async () => {
+    mockResponse(null);
+    await expect(
+      provider.startResearch("Question", config, context),
+    ).rejects.toThrow("invalid response");
+  });
+
+  it("rejects missing credentials before fetching", async () => {
+    const fetchMock = mockResponse({});
+    await expect(provider.answer("Question", {}, context)).rejects.toThrow(
+      "missing an API key",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

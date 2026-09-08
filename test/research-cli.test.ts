@@ -2,35 +2,37 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 
-vi.mock("@google/genai", () => ({
-  GoogleGenAI: class {
-    interactions = {
-      create: async () => ({ id: "opaque-research-job" }),
-      get: async () => ({
-        status: "completed",
-        steps: [
-          {
-            type: "model_output",
-            content: [
-              {
-                type: "text",
-                text: "# The question of life\n\nResearch report.",
-              },
-            ],
-          },
-        ],
-      }),
-    };
-  },
-}));
+afterEach(() => vi.unstubAllGlobals());
 
 import { runCli } from "../src/cli.js";
 
 it.each([false, true])(
   "keeps Gemini research logs on stderr and the report on stdout (quiet=%s)",
   async (quiet) => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(Response.json({ id: "opaque-research-job" }))
+        .mockResolvedValueOnce(
+          Response.json({
+            status: "completed",
+            steps: [
+              {
+                type: "model_output",
+                content: [
+                  {
+                    type: "text",
+                    text: "# The question of life\n\nResearch report.",
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+    );
     const directory = await mkdtemp(join(tmpdir(), "webfox-research-cli-"));
     try {
       const config = join(directory, "config.yaml");

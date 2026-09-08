@@ -3,7 +3,7 @@ import { defineProvider } from "../definition.js";
 export const geminiProvider = defineProvider({
   id: "gemini",
   label: "Gemini",
-  docsUrl: "https://github.com/googleapis/js-genai",
+  docsUrl: "https://ai.google.dev/api",
   local: false,
   credentials: [
     {
@@ -60,7 +60,8 @@ export const geminiProvider = defineProvider({
                     type: "string",
                   },
                 },
-                description: "Request labels to attach to the Gemini call.",
+                description:
+                  "Unsupported by the Gemini Developer API; requests with labels are rejected.",
               },
               temperature: {
                 type: "number",
