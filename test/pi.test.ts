@@ -185,7 +185,8 @@ it("rejects misplaced provider parameters before execution with a repair hint", 
 
 it.each([
   ["malformed YAML", "providers: [private-secret", "Invalid YAML"],
-  ["invalid schema", "defaults: false", "Invalid"],
+  ["invalid schema", "defaults: false", "/defaults: must be object"],
+  ["unknown key", "deafaults: {}", "Unknown key: deafaults"],
   [
     "invalid provider options",
     "providers:\n  exa:\n    options:\n      search:\n        type: private-secret\n",
@@ -196,7 +197,7 @@ it.each([
     "defaults:\n  search:\n    provider: brave\n  research:\n    provider: serper\n",
     "/defaults/research/provider",
   ],
-  ["missing explicit file", undefined, "Could not read configuration"],
+  ["missing explicit file", undefined, "Could not read file"],
 ])(
   "disables the extension for %s without blocking startup",
   async (_name, config, diagnostic) => {
@@ -223,13 +224,19 @@ it.each([
     expect(stderr).not.toHaveBeenCalled();
     events.session_start({}, { hasUI: true, ui: { notify } });
     expect(notify).toHaveBeenCalledExactlyOnceWith(
-      expect.stringMatching(/^✘︎ Web extension disabled: /),
+      expect.stringMatching(/^Webfox disabled — invalid configuration\n/),
       "error",
     );
     const message = notify.mock.calls[0][0];
     expect(message).toContain(diagnostic);
-    expect(message.match(/✘︎/g)).toHaveLength(1);
-    expect(message).toContain("restart pi or run /reload");
+    expect(message).not.toContain("✘︎");
+    expect(message).toContain(`\n  ${path}\n`);
+    expect(message.endsWith("\n\nFix the configuration, then /reload.")).toBe(
+      true,
+    );
+    expect(message).not.toMatch(
+      /schema is false|additional properties|Provider options belong/,
+    );
     expect(message).not.toContain("private-secret");
     expect(stderr).not.toHaveBeenCalled();
     // Print/JSON modes must report on stderr without relying on UI or polluting stdout.

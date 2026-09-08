@@ -18,6 +18,7 @@ import {
 import { renderTextDocument } from "./render.js";
 import { prepareToolArguments } from "./pi-validation.js";
 import { WebfoxError } from "./errors.js";
+import { configurationDiagnostic } from "./pi-diagnostics.js";
 
 export default function webExtension(pi: ExtensionAPI): void {
   const clients = new Map<string, WebClient>();
@@ -44,7 +45,7 @@ export default function webExtension(pi: ExtensionAPI): void {
       )
     )
       throw error;
-    const message = `✘︎ Web extension disabled: ${error.message}\nFix the configuration, then restart pi or run /reload.`;
+    const message = configurationDiagnostic(error);
     pi.on("session_start", (_event, context) => {
       if (context.hasUI) context.ui.notify(message, "error");
       else console.error(message);
