@@ -343,11 +343,11 @@ describe("vertical web rendering", () => {
     }
   });
 
-  it("escapes newlines, tabs, and quotes while stripping terminal controls from inputs", () => {
+  it("escapes control characters without escaping quotes in inputs", () => {
     const input = 'hello\n"quoted"\t\u001b[31mred\u001b[0m\u0007';
     const doc = result("search", [{ input, state: "done" }]);
     expect(renderWebResult(doc, collapsed, theme(), false).render(120)).toEqual(
-      ['✔︎ hello\\n\\"quoted\\"\\tred'],
+      ['✔︎ hello\\n"quoted"\\tred'],
     );
   });
 
