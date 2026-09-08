@@ -1,0 +1,9 @@
+created: 2026-09-08
+title: Lighter Gemini installation
+intro: >-
+  Webfox makes Gemini grounded answers and deep research lighter to install by removing
+  the Google SDK and its installation scripts. API keys, model settings, and commands
+  remain unchanged.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.2.0
