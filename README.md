@@ -252,6 +252,9 @@ configuration, progress, and errors.
   `web config default <capability> <provider>`.
 - **Missing credentials:** Run `web providers <id>` to check the required key
   names, or see the [provider guide](./docs/provider.md).
+- **Invalid configuration in pi:** Pi continues to start, but Webfox registers
+  no tools and reports the error (on stderr in print and JSON modes). Fix the
+  configuration, then restart Pi or run `/reload` to load the extension again.
 - **No pi tools:** Select default providers in the shared configuration and
   restart pi. Installing the extension or setting keys alone isn't enough.
 

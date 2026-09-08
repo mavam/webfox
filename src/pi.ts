@@ -17,6 +17,8 @@ import {
 } from "./index.js";
 import { renderTextDocument } from "./render.js";
 import { prepareToolArguments } from "./pi-validation.js";
+import { WebfoxError } from "./errors.js";
+import { configurationDiagnostic } from "./pi-diagnostics.js";
 
 export default function webExtension(pi: ExtensionAPI): void {
   const clients = new Map<string, WebClient>();
@@ -28,10 +30,28 @@ export default function webExtension(pi: ExtensionAPI): void {
     }
     return client;
   };
-  const initial = clientFor(process.cwd());
-  const selected = CAPABILITIES.filter(
-    (capability) => initial.inspectCapability(capability).provider,
-  );
+  let selected: ReturnType<WebClient["inspectCapability"]>[];
+  try {
+    const initial = clientFor(process.cwd());
+    // Inspect every capability before registering anything to avoid a partial load.
+    selected = CAPABILITIES.map((capability) =>
+      initial.inspectCapability(capability),
+    ).filter((inspection) => inspection.provider);
+  } catch (error) {
+    if (
+      !(error instanceof WebfoxError) ||
+      !["INVALID_CONFIG", "INVALID_INPUT", "PROVIDER_UNAVAILABLE"].includes(
+        error.code,
+      )
+    )
+      throw error;
+    const message = configurationDiagnostic(error);
+    pi.on("session_start", (_event, context) => {
+      if (context.hasUI) context.ui.notify(message, "error");
+      else console.error(message);
+    });
+    return;
+  }
   if (!selected.length)
     pi.on("session_start", (_event, context) => {
       if (context.hasUI)
@@ -40,8 +60,8 @@ export default function webExtension(pi: ExtensionAPI): void {
           "warning",
         );
     });
-  for (const capability of selected) {
-    const inspection = initial.inspectCapability(capability);
+  for (const inspection of selected) {
+    const capability = inspection.capability;
     const provider = inspection.provider!;
     const fields: TProperties =
       capability === "contents"

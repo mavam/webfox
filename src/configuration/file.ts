@@ -64,6 +64,12 @@ function readFailure(
   throw new WebfoxError(
     "INVALID_CONFIG",
     `Could not read configuration: ${path}. Check the path and file permissions.`,
+    {
+      configuration: {
+        source: path,
+        issues: ["Could not read file. Check the path and permissions."],
+      },
+    },
   );
 }
 // Keep the YAML document for narrow, comment-preserving updates.
@@ -102,6 +108,14 @@ export function parseConfigDocument(text: string, source = "config.yaml") {
     throw new WebfoxError(
       "INVALID_CONFIG",
       `Invalid YAML in ${source}. Use one YAML 1.2 document with unique keys, with string keys and finite numbers, without aliases or explicit tags.`,
+      {
+        configuration: {
+          source,
+          issues: [
+            "Invalid YAML. Use YAML 1.2 without duplicate keys, aliases, or explicit tags.",
+          ],
+        },
+      },
     );
   }
 }
@@ -121,17 +135,47 @@ export function validateConfig(
 ): WebfoxConfig {
   const schema = configurationSchema as unknown as TSchema;
   if (!Check(schema, value)) {
-    const detail = Errors(schema, value)
+    const errors = Errors(schema, value);
+    const detail = errors
       .slice(0, 3)
       .map((error) => `${error.instancePath || "/"}: ${error.message}`)
       .join("; ");
     throw new WebfoxError(
       "INVALID_CONFIG",
       `Invalid ${source}: ${detail}. Provider options belong under providers.<id>.options.<capability>.`,
+      { configuration: { source, issues: configurationIssues(errors) } },
     );
   }
   return structuredClone(value) as WebfoxConfig;
 }
+function configurationIssues(errors: ReturnType<typeof Errors>): string[] {
+  const issues = new Map<string, string>();
+  for (const error of errors) {
+    // TypeBox emits both the rejected key and a duplicate parent-object error.
+    if (error.keyword === "additionalProperties") continue;
+    const path = error.instancePath || "/";
+    if (issues.has(path)) continue;
+    const unknownKey =
+      error.keyword === "boolean" &&
+      error.schemaPath.endsWith("/additionalProperties");
+    const key = path
+      .slice(1)
+      .split("/")
+      .map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~"))
+      .join(".");
+    const message = unknownKey
+      ? `Unknown key: ${key}`
+      : error.keyword === "enum" || error.keyword === "const"
+        ? `${path}: unsupported value`
+        : `${path}: ${error.message}`;
+    issues.set(path, message);
+    if (issues.size === 3) break;
+  }
+  return issues.size
+    ? [...issues.values()]
+    : ["Invalid configuration structure."];
+}
+
 export function redactConfig(config: WebfoxConfig): unknown {
   const visit = (entry: unknown): unknown => {
     if (Array.isArray(entry)) return entry.map(visit);

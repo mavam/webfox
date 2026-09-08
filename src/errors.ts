@@ -5,7 +5,11 @@ export class WebfoxError extends Error {
   constructor(
     public readonly code: WebfoxErrorCode,
     message: string,
-    public readonly options: { cause?: unknown; retryable?: boolean } = {},
+    public readonly options: {
+      cause?: unknown;
+      retryable?: boolean;
+      configuration?: { source: string; issues: string[] };
+    } = {},
   ) {
     super(
       message,
