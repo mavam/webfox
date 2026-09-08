@@ -1,6 +1,6 @@
 ---
 title: Lighter Gemini installation
-type: change
+type: bugfix
 authors:
   - mavam
 prs:
