@@ -5,7 +5,7 @@ authors:
   - mavam
 prs:
   - 46
-created: 2026-09-10T08:56:09.121057Z
+created: 2026-09-10T11:25:30.364726Z
 ---
 
 You can now use your SerpBase API key for Google search, images, news, videos,
@@ -30,3 +30,7 @@ incompatible options are rejected. Each input fetches one page or place and
 preserves result order, with original ranks and available context retained in
 JSON metadata. `maxResults` limits the result locally and doesn't trigger
 additional billed pages.
+
+SerpBase requests have a 120-second overall deadline by default to accommodate
+slower endpoints. Explicit request or execution timeouts still take precedence;
+other providers keep their existing defaults.

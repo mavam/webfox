@@ -12,6 +12,8 @@ import type {
 
 import type { ProviderCredentialMetadata } from "./metadata.js";
 export interface CapabilityDefinition {
+  /** Overall deadline when neither the request nor execution configuration sets one. */
+  defaultTimeoutMs?: number;
   options?: Record<string, unknown>;
   limits?: { maxResults?: number };
   promptGuidelines?: readonly string[];

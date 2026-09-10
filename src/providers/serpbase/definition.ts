@@ -14,6 +14,7 @@ export const serpbaseProvider = defineProvider({
   credentialDefaults: {},
   capabilities: {
     search: {
+      defaultTimeoutMs: 120_000,
       modeOptionKeys: Object.fromEntries(
         Object.entries(SERPBASE_MODES).map(([mode, definition]) => [
           mode,

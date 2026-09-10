@@ -50,8 +50,10 @@ export class ExecutionRuntime {
     const timeoutMs =
       request.timeoutMs ??
       (capability === "research"
-        ? (plan.policy.researchTimeoutMs ?? 1_800_000)
-        : (plan.policy.timeoutMs ?? 30_000));
+        ? plan.policy.researchTimeoutMs
+        : plan.policy.timeoutMs) ??
+      definition.capabilities[capability]?.defaultTimeoutMs ??
+      (capability === "research" ? 1_800_000 : 30_000);
     if (
       !Number.isSafeInteger(timeoutMs) ||
       timeoutMs <= 0 ||

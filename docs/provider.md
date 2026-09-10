@@ -175,6 +175,12 @@ Choose a mode with `--mode` in the CLI or `options.mode` in the library and Pi:
 | `maps` | Place search text | Places, addresses, ratings, and feature IDs; optional `lat`, `lng`, and `zoom`. |
 | `maps-detail` | Feature IDs from `maps` | One place's details per input, including contact information and hours when available. |
 
+SerpBase has a 120-second overall deadline by default because some endpoints can
+exceed the usual 30-second search deadline. An explicit CLI `--timeout`, library
+`timeoutMs`, or YAML `execution.timeoutMs` takes precedence. This deadline includes
+all inputs and retries; it isn't a separate allowance per request. Other providers
+keep their existing defaults.
+
 Every mode accepts `hl` (language, default `en`) and `gl` (country, default `us`).
 All modes except `maps-detail` accept `page` (1-based, default `1`). Maps Search
 requires `lat` and `lng` together. `zoom` requires coordinates, ranges from `1` to

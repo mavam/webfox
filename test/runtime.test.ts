@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createWebfox } from "../src/index.js";
 import { executeAsyncResearch } from "../src/runtime/polling.js";
 import { WebfoxError } from "../src/errors.js";
+import { providers } from "../src/providers/registry.js";
 const { markdown } = vi.hoisted(() => ({ markdown: vi.fn() }));
 vi.mock("cloudflare", () => ({
   default: class {
@@ -13,6 +14,49 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
+it.each([
+  ["serpbase", undefined, undefined, 120_000],
+  ["serpbase", 45_000, undefined, 45_000],
+  ["serpbase", 45_000, 15_000, 15_000],
+  ["serper", undefined, undefined, 30_000],
+] as const)(
+  "uses request > configuration > provider > global timeout for %s (%s, %s)",
+  async (provider, configured, requested, expected) => {
+    await providers[provider].load();
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url, init) => {
+        signal = init.signal;
+        return new Promise((_resolve, reject) => {
+          signal!.addEventListener("abort", () => reject(signal!.reason), {
+            once: true,
+          });
+        });
+      }),
+    );
+    const client = createWebfox({
+      config: { execution: { timeoutMs: configured } },
+      env: { SERPBASE_API_KEY: "key", SERPER_API_KEY: "key" },
+    });
+    const pending = client.search({
+      provider,
+      queries: ["slow search"],
+      timeoutMs: requested,
+    });
+    await vi.advanceTimersByTimeAsync(expected - 1);
+    expect(signal).toBeDefined();
+    expect(signal!.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signal!.aborted).toBe(true);
+    expect((await pending).results[0]).toMatchObject({
+      ok: false,
+      error: { code: "TIMEOUT" },
+    });
+  },
+);
+
 it("retries structurally transient per-page failures on safe adapters", async () => {
   markdown
     .mockRejectedValueOnce(
