@@ -1,0 +1,10 @@
+created: 2026-09-10
+title: Google search modes with SerpBase
+intro: >-
+  Use your SerpBase API key for Google search, images, news, videos, Maps Search,
+  and place details through the existing web_search tool, CLI, and TypeScript library.
+  Mode-aware options, actionable results, and a 120-second default deadline support
+  these workflows without adding harness tools.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.2.2
