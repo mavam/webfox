@@ -28,6 +28,7 @@
                 "openai",
                 "parallel",
                 "perplexity",
+                "serpbase",
                 "serper",
                 "tavily",
                 "valyu",
@@ -3288,6 +3289,95 @@
                     }
                   },
                   "description": "Perplexity grounded generation options.",
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "serpbase": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "credentials": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "api": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "env": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["env"]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["value"]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "required": ["command"]
+                    }
+                  ]
+                }
+              }
+            },
+            "baseUrl": {
+              "type": "string",
+              "minLength": 1
+            },
+            "options": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "search": {
+                  "type": "object",
+                  "properties": {
+                    "hl": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Google results language code (for example 'en')."
+                    },
+                    "gl": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Google results country code (for example 'us')."
+                    },
+                    "page": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "description": "1-based Google results page. Only this page is fetched; maxResults limits the returned results, not the upstream page size."
+                    },
+                    "device": {
+                      "enum": ["default", "pc", "mobile"],
+                      "description": "Google Search device: 'default' for automatic routing, 'pc' for desktop, or 'mobile'."
+                    }
+                  },
+                  "description": "SerpBase Google organic search options.",
                   "additionalProperties": false
                 }
               }

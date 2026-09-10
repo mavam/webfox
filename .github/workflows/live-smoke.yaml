@@ -70,6 +70,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PARALLEL_API_KEY: ${{ secrets.PARALLEL_API_KEY }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          SERPBASE_API_KEY: ${{ secrets.SERPBASE_API_KEY }}
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           VALYU_API_KEY: ${{ secrets.VALYU_API_KEY }}

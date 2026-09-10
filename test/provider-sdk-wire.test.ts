@@ -41,6 +41,44 @@ function client(provider: ProviderId) {
   });
 }
 
+it("forwards SerpBase's native options to one Google search page", async () => {
+  response = {
+    status: 0,
+    organic: [
+      {
+        rank: 1,
+        title: "Example",
+        link: "https://example.com",
+        snippet: "Result",
+      },
+    ],
+  };
+  const options = { hl: "de", gl: "de", page: 2, device: "mobile" };
+  const result = await client("serpbase").search({
+    provider: "serpbase",
+    queries: ["q"],
+    maxResults: 3,
+    options,
+  });
+  expect(result.status).toBe("ok");
+  expect(requests).toEqual([
+    { path: "/google/search", body: { q: "q", ...options } },
+  ]);
+  expect(result.results[0]).toMatchObject({
+    ok: true,
+    value: {
+      results: [
+        {
+          title: "Example",
+          url: "https://example.com",
+          snippet: "Result",
+          metadata: { rank: 1 },
+        },
+      ],
+    },
+  });
+});
+
 it("forwards You.com's POST search controls through its HTTP adapter", async () => {
   response = { results: { web: [], news: [] }, metadata: { query: "q" } };
   const options = {

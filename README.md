@@ -134,6 +134,7 @@ Use different providers for different tasks:
 | [OpenAI]     |   ✔︎    |          |   ✔︎    |    ✔︎     |
 | [Parallel]   |   ✔︎    |    ✔︎     |        |          |
 | [Perplexity] |   ✔︎    |          |   ✔︎    |    ✔︎     |
+| [SerpBase]   |   ✔︎    |          |        |          |
 | [Serper]     |   ✔︎    |          |        |          |
 | [Tavily]     |   ✔︎    |    ✔︎     |        |          |
 | [Valyu]      |   ✔︎    |    ✔︎     |   ✔︎    |    ✔︎     |
@@ -150,6 +151,7 @@ Use different providers for different tasks:
 [OpenAI]: ./docs/provider.md#openai
 [Parallel]: ./docs/provider.md#parallel
 [Perplexity]: ./docs/provider.md#perplexity
+[SerpBase]: ./docs/provider.md#serpbase
 [Serper]: ./docs/provider.md#serper
 [Tavily]: ./docs/provider.md#tavily
 [Valyu]: ./docs/provider.md#valyu

@@ -152,6 +152,49 @@ Supports search, grounded answers, and research. Set `PERPLEXITY_API_KEY`.
 web answer "What is MCP?" --provider perplexity
 ```
 
+## SerpBase
+
+Supports Google organic search. Set `SERPBASE_API_KEY`, or configure
+`providers.serpbase.credentials.api` with a credential source. No defaults change
+unless you select SerpBase.
+
+```sh
+web search "Node.js release notes" --provider serpbase --gl us --hl en --device pc
+web config default search serpbase
+```
+
+The native options are `hl` (language, default `en`), `gl` (country, default `us`),
+`page` (1-based, default `1`), and `device` (`default`, `pc`, or `mobile`).
+`default` lets SerpBase choose the device. Save provider-specific defaults under
+`providers.serpbase.options.search`:
+
+```yaml
+providers:
+  serpbase:
+    options:
+      search:
+        gl: de
+        hl: de
+        device: pc
+```
+
+Each query fetches only the selected page, preserving the organic result order.
+`maxResults` trims that page locally; it doesn't increase the upstream page size
+or fetch additional pages. Use `--page 2` to request another page explicitly.
+Requests can incur charges, including retries after transient failures.
+
+JSON output retains each result's original `rank`, available aliases and sitelinks
+in `metadata`. Ranks are page-relative, not calculated absolute positions.
+`metadata.searchContext` includes the returned page, query, request ID, charged
+credits, and rich SERP modules such as People Also Ask and related searches when
+available. Context is attached to organic results, so an empty results list has
+no context metadata. Rich modules aren't mixed into the organic ordering.
+
+The provider uses the [JSON API](https://serpbase.dev/docs) directly, without an
+SDK dependency. `providers.serpbase.baseUrl` can replace the API origin for a
+compatible proxy; webfox appends `/google/search`. Images, news, videos, and Maps
+endpoints aren't exposed by this integration.
+
 ## Serper
 
 Supports search. Set `SERPER_API_KEY`.

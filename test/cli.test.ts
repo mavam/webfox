@@ -59,6 +59,89 @@ async function cli(
   return { code, stdout, stderr };
 }
 describe("CLI contracts", () => {
+  it("configures SerpBase as the default and exposes native search flags", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "webfox-serpbase-"));
+    directories.push(cwd);
+    const config = join(cwd, "config.yaml");
+    await writeFile(
+      config,
+      stringify({
+        providers: {
+          serpbase: { credentials: { api: { value: "cli-test-key" } } },
+        },
+      }),
+    );
+    const saved = await cli([
+      "config",
+      "default",
+      "search",
+      "serpbase",
+      "--config",
+      config,
+    ]);
+    expect(saved.code).toBe(0);
+    const fetch = vi.fn().mockResolvedValue(
+      Response.json({
+        status: 0,
+        page: 2,
+        organic: [
+          {
+            title: "Example",
+            link: "https://example.com",
+            snippet: "A passage",
+            rank: 1,
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const result = await cli([
+      "search",
+      "site:example.com",
+      "--config",
+      config,
+      "--hl",
+      "de",
+      "--gl",
+      "de",
+      "--page",
+      "2",
+      "--device",
+      "pc",
+      "--format",
+      "json",
+    ]);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      q: "site:example.com",
+      hl: "de",
+      gl: "de",
+      page: 2,
+      device: "pc",
+    });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      provider: "serpbase",
+      status: "ok",
+      results: [
+        {
+          ok: true,
+          value: {
+            results: [
+              {
+                url: "https://example.com",
+                metadata: { rank: 1, searchContext: { page: 2 } },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const help = await cli(["search", "--provider", "serpbase", "--help"]);
+    expect(help.code).toBe(0);
+    for (const flag of ["--hl", "--gl", "--page", "--device"])
+      expect(help.stdout).toContain(flag);
+    expect(help.stdout).not.toContain("--mode");
+  });
   it("exposes You.com native flags and forwards them through the public client", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "webfox-youcom-"));
     directories.push(cwd);
