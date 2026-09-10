@@ -2,7 +2,7 @@
 
 import { parseArgs } from "node:util";
 import { CAPABILITIES, createWebfox } from "../dist/index.js";
-import { selectLiveTests } from "./live-selection.mjs";
+import { liveSearchQuery, selectLiveTests } from "./live-selection.mjs";
 
 const controller = new AbortController();
 const cancel = () => controller.abort();
@@ -72,7 +72,7 @@ try {
           capability === "search"
             ? await client.search({
                 ...controls,
-                queries: ["Node.js AbortSignal documentation"],
+                queries: [liveSearchQuery(provider.id, options)],
                 maxResults: 3,
               })
             : capability === "contents"

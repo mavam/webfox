@@ -1,3 +1,9 @@
+export function liveSearchQuery(providerId, options = {}) {
+  return providerId === "serpbase" && options.mode === "maps"
+    ? "coffee near Brandenburg Gate Berlin"
+    : "Node.js AbortSignal documentation";
+}
+
 export function selectLiveTests(
   providers,
   providerId,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error The smoke-test helper runs directly in Node.js.
-import { selectLiveTests } from "../scripts/live-selection.mjs";
+import * as smoke from "../scripts/live-selection.mjs";
+const { liveSearchQuery, selectLiveTests } = smoke;
 
 const providers = [
   {
@@ -12,6 +13,15 @@ const providers = [
 ];
 
 describe("live smoke selection", () => {
+  it("uses a place query for SerpBase Maps without changing other smoke inputs", () => {
+    expect(liveSearchQuery("serpbase", { mode: "maps" })).toBe(
+      "coffee near Brandenburg Gate Berlin",
+    );
+    expect(liveSearchQuery("serpbase", { mode: "search" })).toBe(
+      "Node.js AbortSignal documentation",
+    );
+    expect(liveSearchQuery("exa")).toBe("Node.js AbortSignal documentation");
+  });
   it("selects every configured non-research capability", () => {
     const result = selectLiveTests(providers, "all", "all", false);
     expect(
