@@ -154,7 +154,8 @@ web answer "What is MCP?" --provider perplexity
 
 ## SerpBase
 
-Supports Google organic search. Set `SERPBASE_API_KEY`, or configure
+Supports all six Google endpoints through the existing `search` capability and
+Pi's `web_search` tool. Set `SERPBASE_API_KEY`, or configure
 `providers.serpbase.credentials.api` with a credential source. No defaults change
 unless you select SerpBase.
 
@@ -163,10 +164,48 @@ web search "Node.js release notes" --provider serpbase --gl us --hl en --device 
 web config default search serpbase
 ```
 
-The native options are `hl` (language, default `en`), `gl` (country, default `us`),
-`page` (1-based, default `1`), and `device` (`default`, `pc`, or `mobile`).
-`default` lets SerpBase choose the device. Save provider-specific defaults under
-`providers.serpbase.options.search`:
+Choose a mode with `--mode` in the CLI or `options.mode` in the library and Pi:
+
+| Mode | Input | Results and controls |
+| --- | --- | --- |
+| `search` (default) | Search text | Organic results; `device` is `default`, `pc`, or `mobile`. |
+| `images` | Search text | Image URLs, source pages, and thumbnails. |
+| `news` | Search text | Articles, publishers, and published-time text. |
+| `videos` | Search text | Videos, sources, durations, and published-time text. |
+| `maps` | Place search text | Places, addresses, ratings, and feature IDs; optional `lat`, `lng`, and `zoom`. |
+| `maps-detail` | Feature IDs from `maps` | One place's details per input, including contact information and hours when available. |
+
+Every mode accepts `hl` (language, default `en`) and `gl` (country, default `us`).
+All modes except `maps-detail` accept `page` (1-based, default `1`). Maps Search
+requires `lat` and `lng` together. `zoom` requires coordinates, ranges from `1` to
+`21`, and defaults to `14` upstream when coordinates are supplied. Device
+selection applies only to organic search; `default` lets SerpBase choose.
+
+```sh
+web search "architecture diagrams" --provider serpbase --mode images
+web search "Node.js releases" --provider serpbase --mode news
+web search "Node.js tutorials" --provider serpbase --mode videos
+web search "coffee" --provider serpbase --mode maps --lat 52.52 --lng 13.405 --zoom 14
+```
+
+For place enrichment, copy a `feature_id` from a Maps result and pass it as the
+search input. Don't use a place name, `place_id`, CID, or Maps URL:
+
+```sh
+web search '0x...:0x...' --provider serpbase --mode maps-detail
+```
+
+Replace the placeholder with an actual returned ID. The model follows the same
+sequence using the same tool, with one feature ID per `queries` entry:
+
+```json
+{
+  "queries": ["0x...:0x..."],
+  "options": { "mode": "maps-detail" }
+}
+```
+
+Save provider-specific defaults under `providers.serpbase.options.search`:
 
 ```yaml
 providers:
@@ -178,22 +217,36 @@ providers:
         device: pc
 ```
 
-Each query fetches only the selected page, preserving the organic result order.
+Changing modes drops incompatible inherited defaults. For example, a request
+with `mode: images` doesn't inherit the configured `device: pc`. Explicitly
+supplying incompatible options is an error, not a silently ignored setting.
+Coordinate dependencies are checked after merging defaults and request options.
+
+Each input fetches only the selected page or place, preserving result order.
 `maxResults` trims that page locally; it doesn't increase the upstream page size
 or fetch additional pages. Use `--page 2` to request another page explicitly.
-Requests can incur charges, including retries after transient failures.
+Requests can incur charges, including retries after transient failures. See the
+[SerpBase API reference](https://serpbase.dev/docs) for per-endpoint pricing.
 
-JSON output retains each result's original `rank`, available aliases and sitelinks
-in `metadata`. Ranks are page-relative, not calculated absolute positions.
-`metadata.searchContext` includes the returned page, query, request ID, charged
-credits, and rich SERP modules such as People Also Ask and related searches when
-available. Context is attached to organic results, so an empty results list has
-no context metadata. Rich modules aren't mixed into the organic ordering.
+Text and model-visible output include actionable fields: image/source URLs,
+news/video sources and time text, and place feature IDs, addresses, contact
+information, ratings, and hours when returned. Images aren't downloaded. Published
+times and opening status are upstream observations, not independently verified.
+Ambiguous clock-like video times are labeled `Time (upstream)`, not publication
+dates or inferred durations. The known Google navigation-logo artifact is
+excluded from image results; other results retain their upstream order.
 
-The provider uses the [JSON API](https://serpbase.dev/docs) directly, without an
-SDK dependency. `providers.serpbase.baseUrl` can replace the API origin for a
-compatible proxy; webfox appends `/google/search`. Images, news, videos, and Maps
-endpoints aren't exposed by this integration.
+JSON output retains original ranks, aliases, sitelinks, media fields, and place
+data in `metadata`, alongside the selected `mode`. Ranks are page-relative, not
+calculated absolute positions. `metadata.searchContext` includes the returned
+page, query, request ID, charged credits, and rich SERP modules when available.
+Context is attached to results, so an empty results list has no context metadata.
+Rich modules aren't mixed into the primary result ordering.
+
+The provider uses the JSON API directly, without an SDK dependency.
+`providers.serpbase.baseUrl` can replace the API origin for a compatible proxy;
+webfox appends the selected endpoint, such as `/google/images` or
+`/google/maps/detail`.
 
 ## Serper
 

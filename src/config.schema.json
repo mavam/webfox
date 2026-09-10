@@ -3357,6 +3357,18 @@
                 "search": {
                   "type": "object",
                   "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "search",
+                        "images",
+                        "news",
+                        "videos",
+                        "maps",
+                        "maps-detail"
+                      ],
+                      "description": "Google endpoint: 'search' (default) for organic results, 'images' for visual references, 'news' for journalism, 'videos' for clips/tutorials, 'maps' for businesses/places, or 'maps-detail' for place enrichment. In maps-detail, each queries entry must be a feature_id returned by maps (0x...:0x...), not search text."
+                    },
                     "hl": {
                       "type": "string",
                       "minLength": 1,
@@ -3370,14 +3382,108 @@
                     "page": {
                       "type": "integer",
                       "minimum": 1,
-                      "description": "1-based Google results page. Only this page is fetched; maxResults limits the returned results, not the upstream page size."
+                      "description": "1-based results page (default 1). Not accepted in maps-detail. Only this page is fetched; maxResults limits the returned results, not the upstream page size."
                     },
                     "device": {
+                      "type": "string",
                       "enum": ["default", "pc", "mobile"],
-                      "description": "Google Search device: 'default' for automatic routing, 'pc' for desktop, or 'mobile'."
+                      "description": "Only for search mode: 'default' (default) for automatic routing, 'pc' for desktop, or 'mobile'."
+                    },
+                    "lat": {
+                      "type": "number",
+                      "minimum": -90,
+                      "maximum": 90,
+                      "description": "Maps mode only: map center latitude. Requires lng."
+                    },
+                    "lng": {
+                      "type": "number",
+                      "minimum": -180,
+                      "maximum": 180,
+                      "description": "Maps mode only: map center longitude. Requires lat."
+                    },
+                    "zoom": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 21,
+                      "description": "Maps mode only: zoom level, 1–21. Requires lat and lng; defaults to 14 when coordinates are supplied."
                     }
                   },
-                  "description": "SerpBase Google organic search options.",
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "mode": {
+                          "enum": ["search"]
+                        },
+                        "lat": false,
+                        "lng": false,
+                        "zoom": false
+                      }
+                    },
+                    {
+                      "properties": {
+                        "mode": {
+                          "enum": ["images"]
+                        },
+                        "device": false,
+                        "lat": false,
+                        "lng": false,
+                        "zoom": false
+                      }
+                    },
+                    {
+                      "properties": {
+                        "mode": {
+                          "enum": ["news"]
+                        },
+                        "device": false,
+                        "lat": false,
+                        "lng": false,
+                        "zoom": false
+                      }
+                    },
+                    {
+                      "properties": {
+                        "mode": {
+                          "enum": ["videos"]
+                        },
+                        "device": false,
+                        "lat": false,
+                        "lng": false,
+                        "zoom": false
+                      }
+                    },
+                    {
+                      "properties": {
+                        "mode": {
+                          "enum": ["maps"]
+                        },
+                        "device": false
+                      },
+                      "anyOf": [
+                        {
+                          "properties": {
+                            "lat": false,
+                            "lng": false,
+                            "zoom": false
+                          }
+                        },
+                        {}
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "mode": {
+                          "enum": ["maps-detail"]
+                        },
+                        "page": false,
+                        "device": false,
+                        "lat": false,
+                        "lng": false,
+                        "zoom": false
+                      }
+                    }
+                  ],
+                  "description": "SerpBase Google search modes. In maps-detail, queries contains feature IDs instead of search text. Unknown or mode-incompatible options are rejected. Changing mode drops incompatible inherited defaults, not explicitly supplied options.",
                   "additionalProperties": false
                 }
               }

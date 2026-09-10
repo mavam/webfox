@@ -332,7 +332,17 @@ describe("SerpBase search", () => {
     { gl: 123 },
     { num: 10 },
     { q: "override" },
-    { mode: "images" },
+    { mode: "unsupported" },
+    { mode: "images", device: "pc" },
+    { mode: "news", lat: 0, lng: 0 },
+    { mode: "videos", zoom: 14 },
+    { mode: "maps", device: "mobile" },
+    { mode: "maps", lat: 91 },
+    { mode: "maps", lng: -181 },
+    { mode: "maps", zoom: 22 },
+    { mode: "maps", zoom: 1.5 },
+    { mode: "maps-detail", page: 1 },
+    { mode: "maps-detail", lat: 0, lng: 0 },
   ])("rejects invalid options before requests: %j", async (options) => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);

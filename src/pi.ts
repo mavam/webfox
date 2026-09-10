@@ -93,7 +93,12 @@ export default function webExtension(pi: ExtensionAPI): void {
     pi.registerTool({
       name: `web_${capability}`,
       label: `Web ${capability[0].toUpperCase()}${capability.slice(1)}`,
-      description: `${descriptions[capability]} Output is truncated to 2000 lines or 50 KiB; full results are saved to a file when truncated.`,
+      // Keep provider guidance with the tool schema, including with custom system prompts.
+      description: [
+        descriptions[capability],
+        ...(inspection.promptGuidelines ?? []),
+        "Output is truncated to 2000 lines or 50 KiB; full results are saved to a file when truncated.",
+      ].join("\n"),
       parameters,
       prepareArguments(args) {
         // Pi still validates and coerces the returned arguments before execute.

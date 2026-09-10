@@ -190,6 +190,13 @@ export function createWebfox(options: CreateWebfoxOptions = {}): WebfoxClient {
         capability,
         provider: selected,
         configured: configured(definition, capability),
+        ...(definition.capabilities[capability]?.promptGuidelines
+          ? {
+              promptGuidelines: [
+                ...definition.capabilities[capability]!.promptGuidelines!,
+              ],
+            }
+          : {}),
         // Static provider schemas contain no credentials. Redacting property
         // names such as maximum_number_of_tokens would invalidate the schema.
         optionSchema: optionSchema(

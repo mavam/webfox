@@ -5,19 +5,28 @@ authors:
   - mavam
 prs:
   - 46
-created: 2026-09-10T08:18:46.12072Z
+created: 2026-09-10T08:56:09.121057Z
 ---
 
-You can now use your SerpBase API key for Google organic searches in the CLI,
-TypeScript library, and Pi extension. Set `SERPBASE_API_KEY` or configure
-`providers.serpbase.credentials.api`, then select the provider:
+You can now use your SerpBase API key for Google search, images, news, videos,
+Maps Search, and place details through the existing CLI, TypeScript library, and
+Pi `web_search` tool. Set `SERPBASE_API_KEY` or configure
+`providers.serpbase.credentials.api`, then select a search mode:
 
 ```sh
-web search "Node.js release notes" --provider serpbase --gl us --hl en --device pc
+web search "Node.js release notes" --provider serpbase --mode news
+web search "coffee in Berlin" --provider serpbase --mode maps
 web config default search serpbase
 ```
 
-Choose a country, language, device, and results page without changing your search
-workflow. Each query fetches one page and preserves its organic ordering, with
-ranks and available SERP context retained in JSON metadata. `maxResults` limits
-that page locally; it doesn't trigger additional billed pages.
+For place details, pass a `feature_id` returned by Maps Search as the search input
+with `--mode maps-detail`. In Pi, put these IDs in `queries`; no additional tool
+is needed. Model-visible output includes feature IDs, contact information, and
+media URLs so follow-up calls don't depend on hidden metadata.
+
+Choose a country, language, device, page, or map center as supported by the
+selected mode. Mode changes drop incompatible inherited defaults; explicitly
+incompatible options are rejected. Each input fetches one page or place and
+preserves result order, with original ranks and available context retained in
+JSON metadata. `maxResults` limits the result locally and doesn't trigger
+additional billed pages.

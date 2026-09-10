@@ -15,6 +15,8 @@ export interface CapabilityDefinition {
   options?: Record<string, unknown>;
   limits?: { maxResults?: number };
   promptGuidelines?: readonly string[];
+  /** Allowed option keys per mode; switching modes drops incompatible inherited defaults. */
+  modeOptionKeys?: Readonly<Record<string, readonly string[]>>;
   /** Whether the entire operation may be repeated after a transient failure. */
   retrySafe: boolean;
 }

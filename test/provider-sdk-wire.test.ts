@@ -41,43 +41,80 @@ function client(provider: ProviderId) {
   });
 }
 
-it("forwards SerpBase's native options to one Google search page", async () => {
-  response = {
-    status: 0,
-    organic: [
+it.each([
+  {
+    mode: "search",
+    path: "/google/search",
+    field: "organic",
+    extra: { page: 2, device: "mobile" },
+  },
+  {
+    mode: "images",
+    path: "/google/images",
+    field: "images",
+    extra: { page: 2 },
+  },
+  { mode: "news", path: "/google/news", field: "news", extra: { page: 2 } },
+  {
+    mode: "videos",
+    path: "/google/videos",
+    field: "videos",
+    extra: { page: 2 },
+  },
+  {
+    mode: "maps",
+    path: "/google/maps/search",
+    field: "places",
+    extra: { page: 2, lat: 52.5, lng: 13.4, zoom: 14 },
+  },
+  {
+    mode: "maps-detail",
+    path: "/google/maps/detail",
+    field: "place",
+    extra: {},
+  },
+])(
+  "forwards SerpBase $mode to $path without unrelated fields",
+  async ({ mode, path, field, extra }) => {
+    const row = {
+      title: "Example",
+      link: "https://example.com",
+      google_maps_url: "https://example.com",
+      snippet: "Result",
+      feature_id: "0x123:0x456",
+    };
+    response = { status: 0, [field]: mode === "maps-detail" ? row : [row] };
+    const options = { mode, hl: "de", gl: "de", ...extra };
+    const result = await client("serpbase").search({
+      provider: "serpbase",
+      queries: [mode === "maps-detail" ? row.feature_id : "q"],
+      maxResults: 3,
+      options,
+    });
+    expect(result.status).toBe("ok");
+    expect(requests).toEqual([
       {
-        rank: 1,
-        title: "Example",
-        link: "https://example.com",
-        snippet: "Result",
-      },
-    ],
-  };
-  const options = { hl: "de", gl: "de", page: 2, device: "mobile" };
-  const result = await client("serpbase").search({
-    provider: "serpbase",
-    queries: ["q"],
-    maxResults: 3,
-    options,
-  });
-  expect(result.status).toBe("ok");
-  expect(requests).toEqual([
-    { path: "/google/search", body: { q: "q", ...options } },
-  ]);
-  expect(result.results[0]).toMatchObject({
-    ok: true,
-    value: {
-      results: [
-        {
-          title: "Example",
-          url: "https://example.com",
-          snippet: "Result",
-          metadata: { rank: 1 },
+        path,
+        body: {
+          ...(mode === "maps-detail"
+            ? { feature_id: row.feature_id }
+            : { q: "q" }),
+          hl: "de",
+          gl: "de",
+          ...extra,
         },
-      ],
-    },
-  });
-});
+      },
+    ]);
+    expect(result.results[0]).toMatchObject({
+      ok: true,
+      value: {
+        results: [
+          { title: "Example", url: "https://example.com", metadata: { mode } },
+        ],
+      },
+    });
+  },
+);
 
 it("forwards You.com's POST search controls through its HTTP adapter", async () => {
   response = { results: { web: [], news: [] }, metadata: { query: "q" } };
