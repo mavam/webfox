@@ -120,6 +120,11 @@ const samples: Array<{
     },
   },
   {
+    provider: "serpbase",
+    capability: "search",
+    options: { hl: "en", gl: "us", page: 2, device: "mobile" },
+  },
+  {
     provider: "youcom",
     capability: "search",
     options: {

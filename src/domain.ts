@@ -17,6 +17,7 @@ export const PROVIDER_IDS = [
   "openai",
   "parallel",
   "perplexity",
+  "serpbase",
   "serper",
   "tavily",
   "valyu",

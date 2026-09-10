@@ -60,8 +60,28 @@ export function effectiveOptions(
   options: Record<string, unknown> = {},
   mode: "request" | "defaults" = "request",
 ): Record<string, unknown> {
-  const result = deepMerge(
-    deepMerge(
+  const modes = definition.capabilities[capability]?.modeOptionKeys;
+  const merge = (
+    base: Record<string, unknown>,
+    override: Record<string, unknown>,
+  ) => {
+    const inherited = { ...base };
+    if (
+      modes &&
+      typeof override.mode === "string" &&
+      override.mode !== base.mode &&
+      Object.hasOwn(modes, override.mode)
+    ) {
+      const allowed = modes[override.mode];
+      for (const key of new Set(Object.values(modes).flat())) {
+        if (!allowed.includes(key)) delete inherited[key];
+      }
+    }
+    // Explicit invalid overrides remain present for validation, never silently dropped.
+    return deepMerge(inherited, override);
+  };
+  const result = merge(
+    merge(
       definition.defaults[capability] ?? {},
       config.providers?.[definition.id]?.options?.[capability] ?? {},
     ),

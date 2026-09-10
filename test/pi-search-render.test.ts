@@ -47,6 +47,19 @@ function document(): SearchDocument {
 }
 
 describe("plain-text search result rendering", () => {
+  it("indents every line of structured search snippets in text output", () => {
+    const doc = document();
+    const entry = doc.results[0];
+    if (!entry.ok) throw new Error("Expected successful fixture");
+    entry.value.results[0].snippet =
+      "feature_id: 0x123:0x456\nAddress: Main Street\nPhone: +49 123";
+    expect(renderTextDocument(doc)).toContain(
+      "\n   feature_id: 0x123:0x456\n   Address: Main Street\n   Phone: +49 123",
+    );
+    expect(entry.value.results[0].snippet).toBe(
+      "feature_id: 0x123:0x456\nAddress: Main Street\nPhone: +49 123",
+    );
+  });
   it("keeps source Markdown literal and leaves model-facing content unchanged", () => {
     const doc = document();
     const content = renderTextDocument(doc);

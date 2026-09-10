@@ -21,7 +21,7 @@ export function renderTextDocument(
           ? entry.value.results
               .map(
                 (result, i) =>
-                  `${i + 1}. ${result.title}\n   ${result.url}\n   ${result.snippet}`,
+                  `${i + 1}. ${result.title}\n   ${result.url}\n   ${result.snippet.replaceAll("\n", "\n   ")}`,
               )
               .join("\n\n")
           : "No results found.";

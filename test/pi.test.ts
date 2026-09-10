@@ -6,6 +6,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, expect, it, vi } from "vitest";
 import webExtension from "../src/pi.js";
 import { customConfig } from "./helpers.js";
+import { Check } from "typebox/value";
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
@@ -251,6 +252,121 @@ it.each([
     expect(registerTool.mock.calls[0][0].name).toBe("web_search");
   },
 );
+
+it("exposes every SerpBase mode through web_search and supports a model-visible Maps follow-up", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "webfox-pi-serpbase-"));
+  paths.push(directory);
+  const path = join(directory, "config.yaml");
+  await writeFile(
+    path,
+    stringify({
+      defaults: { search: { provider: "serpbase" } },
+      providers: { serpbase: { credentials: { api: { value: "test-key" } } } },
+    }),
+  );
+  vi.stubEnv("WEBFOX_CONFIG", path);
+  const tools: any[] = [];
+  webExtension({
+    registerTool: (tool: any) => tools.push(tool),
+    on() {},
+  } as any);
+  expect(tools.map((tool) => tool.name)).toEqual(["web_search"]);
+  const tool = tools[0];
+  expect(tool.parameters.properties.options.properties.mode.enum).toEqual([
+    "search",
+    "images",
+    "news",
+    "videos",
+    "maps",
+    "maps-detail",
+  ]);
+  expect(tool.description).toContain("feature_id strings in queries");
+  expect(tool.description).toContain(
+    "Image results include image and source-page URLs",
+  );
+  expect(tool.description).not.toContain("web_lookup");
+  expect(tool.description).not.toContain("Serper");
+  for (const mode of [
+    "search",
+    "images",
+    "news",
+    "videos",
+    "maps",
+    "maps-detail",
+  ]) {
+    expect(
+      Check(tool.parameters, { queries: ["input"], options: { mode } }),
+    ).toBe(true);
+  }
+  expect(
+    Check(tool.parameters, {
+      queries: ["input"],
+      options: { mode: "images", device: "pc" },
+    }),
+  ).toBe(false);
+  const id = "0x123:0x456";
+  const fetch = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(
+      Response.json({
+        status: 0,
+        places: [{ name: "Cafe", feature_id: id, address: "Main Street" }],
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({
+        status: 0,
+        place: {
+          name: "Cafe",
+          feature_id: id,
+          website: "https://cafe.test",
+          phone: "+49 123",
+          hours: { Monday: "09:00–17:00" },
+        },
+      }),
+    );
+  const maps = await tool.execute(
+    "maps",
+    { queries: ["cafe"], options: { mode: "maps" } },
+    undefined,
+    undefined,
+    { cwd: directory },
+  );
+  // Follow the ID from model-visible content, never the UI-only details object.
+  const featureId = maps.content[0].text.match(
+    /feature_id: (0x[0-9a-f]+:0x[0-9a-f]+)/,
+  )?.[1];
+  expect(featureId).toBe(id);
+  const details = await tool.execute(
+    "detail",
+    { queries: [featureId], options: { mode: "maps-detail" } },
+    undefined,
+    undefined,
+    { cwd: directory },
+  );
+  expect(details.content[0].text).toContain("Phone: +49 123");
+  expect(details.content[0].text).toContain("Monday");
+  expect(details.content[0].text).toContain("https://cafe.test");
+  expect(JSON.parse(fetch.mock.calls[1][1]!.body as string)).toEqual({
+    feature_id: id,
+    hl: "en",
+    gl: "us",
+  });
+  expect(tools).toHaveLength(1);
+  const theme = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+    underline: (text: string) => text,
+  };
+  expect(
+    tool
+      .renderResult(details, { expanded: true, isPartial: false }, theme, {
+        isError: false,
+      })
+      .render(160)
+      .join("\n"),
+  ).toContain(`feature_id: ${id}`);
+});
 
 it("keeps unconfigured notifications generic", async () => {
   const directory = await mkdtemp(join(tmpdir(), "web-pi-"));

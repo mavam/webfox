@@ -12,9 +12,13 @@ import type {
 
 import type { ProviderCredentialMetadata } from "./metadata.js";
 export interface CapabilityDefinition {
+  /** Overall deadline when neither the request nor execution configuration sets one. */
+  defaultTimeoutMs?: number;
   options?: Record<string, unknown>;
   limits?: { maxResults?: number };
   promptGuidelines?: readonly string[];
+  /** Allowed option keys per mode; switching modes drops incompatible inherited defaults. */
+  modeOptionKeys?: Readonly<Record<string, readonly string[]>>;
   /** Whether the entire operation may be repeated after a transient failure. */
   retrySafe: boolean;
 }

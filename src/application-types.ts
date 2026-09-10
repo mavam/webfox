@@ -30,6 +30,7 @@ export interface CapabilityInspection {
   provider?: ProviderId;
   configured: boolean;
   optionSchema?: Record<string, unknown>;
+  promptGuidelines?: readonly string[];
   defaults: { maxResults?: number; options: Record<string, unknown> };
 }
 export interface WebfoxClient {

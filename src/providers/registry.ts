@@ -9,6 +9,7 @@ import { ollamaProvider } from "./ollama/definition.js";
 import { openaiProvider } from "./openai/definition.js";
 import { parallelProvider } from "./parallel/definition.js";
 import { perplexityProvider } from "./perplexity/definition.js";
+import { serpbaseProvider } from "./serpbase/definition.js";
 import { serperProvider } from "./serper/definition.js";
 import { tavilyProvider } from "./tavily/definition.js";
 import { valyuProvider } from "./valyu/definition.js";
@@ -26,6 +27,7 @@ export const providers = {
   openai: openaiProvider,
   parallel: parallelProvider,
   perplexity: perplexityProvider,
+  serpbase: serpbaseProvider,
   serper: serperProvider,
   tavily: tavilyProvider,
   valyu: valyuProvider,

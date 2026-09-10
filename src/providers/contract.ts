@@ -102,6 +102,7 @@ export interface ProviderConfigMap {
   openai: import("./openai/types.js").OpenAI;
   parallel: import("./parallel/types.js").Parallel;
   perplexity: import("./perplexity/types.js").Perplexity;
+  serpbase: import("./serpbase/types.js").SerpBase;
   serper: import("./serper/types.js").Serper;
   tavily: import("./tavily/types.js").Tavily;
   valyu: import("./valyu/types.js").Valyu;

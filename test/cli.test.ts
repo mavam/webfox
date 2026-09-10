@@ -59,6 +59,139 @@ async function cli(
   return { code, stdout, stderr };
 }
 describe("CLI contracts", () => {
+  it("configures SerpBase as the default and exposes native search flags", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "webfox-serpbase-"));
+    directories.push(cwd);
+    const config = join(cwd, "config.yaml");
+    await writeFile(
+      config,
+      stringify({
+        providers: {
+          serpbase: { credentials: { api: { value: "cli-test-key" } } },
+        },
+      }),
+    );
+    const saved = await cli([
+      "config",
+      "default",
+      "search",
+      "serpbase",
+      "--config",
+      config,
+    ]);
+    expect(saved.code).toBe(0);
+    const fetch = vi.fn().mockResolvedValue(
+      Response.json({
+        status: 0,
+        page: 2,
+        organic: [
+          {
+            title: "Example",
+            link: "https://example.com",
+            snippet: "A passage",
+            rank: 1,
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const result = await cli([
+      "search",
+      "site:example.com",
+      "--config",
+      config,
+      "--hl",
+      "de",
+      "--gl",
+      "de",
+      "--page",
+      "2",
+      "--device",
+      "pc",
+      "--format",
+      "json",
+    ]);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      q: "site:example.com",
+      hl: "de",
+      gl: "de",
+      page: 2,
+      device: "pc",
+    });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      provider: "serpbase",
+      status: "ok",
+      results: [
+        {
+          ok: true,
+          value: {
+            results: [
+              {
+                url: "https://example.com",
+                metadata: { rank: 1, searchContext: { page: 2 } },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const help = await cli(["search", "--provider", "serpbase", "--help"]);
+    expect(help.code).toBe(0);
+    for (const flag of [
+      "--hl",
+      "--gl",
+      "--page",
+      "--device",
+      "--mode",
+      "--lat",
+      "--lng",
+      "--zoom",
+    ])
+      expect(help.stdout).toContain(flag);
+    expect(help.stdout).toContain("maps-detail");
+
+    fetch.mockResolvedValue(
+      Response.json({
+        status: 0,
+        place: {
+          name: "Cafe",
+          feature_id: "0x123:0x456",
+          address: "Main Street",
+          rating: 4.5,
+        },
+      }),
+    );
+    const detail = await cli([
+      "search",
+      "0x123:0x456",
+      "--config",
+      config,
+      "--mode",
+      "maps-detail",
+    ]);
+    expect(detail.code).toBe(0);
+    expect(JSON.parse(fetch.mock.lastCall![1].body)).toEqual({
+      feature_id: "0x123:0x456",
+      hl: "en",
+      gl: "us",
+    });
+    expect(detail.stdout).toContain("feature_id: 0x123:0x456");
+    expect(detail.stdout).toContain("Address: Main Street");
+    expect(detail.stdout).toContain("Rating: 4.5");
+    const invalid = await cli([
+      "search",
+      "coffee",
+      "--config",
+      config,
+      "--mode",
+      "maps",
+      "--lat",
+      "52.5",
+    ]);
+    expect(invalid.code).not.toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
   it("exposes You.com native flags and forwards them through the public client", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "webfox-youcom-"));
     directories.push(cwd);
