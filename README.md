@@ -25,7 +25,13 @@ configuration in your terminal, TypeScript applications, and pi.
 
 ## 🚀 Installation
 
-- **Terminal:** Install the `web` command:
+- **Terminal:** Install the `web` command with [Homebrew](https://github.com/mavam/homebrew-tap):
+
+  ```sh
+  brew install mavam/tap/webfox
+  ```
+
+  Or use npm:
 
   ```sh
   npm install -g webfox
@@ -37,6 +43,7 @@ configuration in your terminal, TypeScript applications, and pi.
   pi install npm:webfox
   ```
 
+  This installs the extension, not the `web` command on your shell's `PATH`.
   Then follow [Use with Pi](#-use-with-pi) to select a web provider and supply its
   API key.
 
@@ -205,6 +212,9 @@ Install the [Pi](https://pi.dev) extension:
 ```sh
 pi install npm:webfox
 ```
+
+To also use the `web` command in your terminal, follow [Installation](#-installation).
+Both installations share the same Webfox configuration.
 
 Add to `~/.config/webfox/config.yaml`:
 
