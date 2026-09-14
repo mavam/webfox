@@ -1,0 +1,8 @@
+created: 2026-09-14
+title: Reliable Nix releases
+intro: >-
+  Webfox fixes Nix installations after version-only releases. The dependency cache
+  now stays valid when the release process updates package versions.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.4.0
