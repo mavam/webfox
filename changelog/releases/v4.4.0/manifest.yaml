@@ -1,0 +1,8 @@
+created: 2026-09-14
+title: Webfox on Nix
+intro: >-
+  Webfox now ships a Nix flake for Linux and Apple Silicon macOS. Install the web
+  CLI declaratively with Home Manager or nix-darwin, or run it directly with Nix.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.3.0
