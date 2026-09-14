@@ -2,6 +2,7 @@
   lib,
   buildNpmPackage,
   nodejs_24,
+  biome,
 }:
 
 let
@@ -18,6 +19,11 @@ buildNpmPackage {
 
   # Build explicitly after npm ci, rather than through the prepare lifecycle.
   npmFlags = [ "--ignore-scripts" ];
+
+  # npm's Linux Biome binary expects a loader outside the Nix store.
+  preBuild = ''
+    ln -sf ${lib.getExe biome} node_modules/.bin/biome
+  '';
 
   doInstallCheck = true;
   installCheckPhase = ''
