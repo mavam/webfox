@@ -36,6 +36,14 @@ configuration in your terminal, TypeScript applications, and pi.
   ```sh
   npm install -g webfox
   ```
+- **Nix:** Run the CLI directly:
+
+  ```sh
+  nix run github:mavam/webfox -- --help
+  ```
+
+  The flake exports `packages.<system>.default` and `overlays.default` for Linux
+  (`aarch64`, `x86_64`) and macOS (Apple Silicon).
 - **TypeScript:** Add `webfox` as an application dependency.
 - **Pi:** Install the extension:
 

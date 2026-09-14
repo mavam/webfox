@@ -26,6 +26,29 @@ permissions:
   contents: read
 
 jobs:
+  nix:
+    name: Nix package (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Check Nix formatting
+        run: nix fmt -- --check flake.nix nix/package.nix
+
+      - name: Evaluate all supported systems
+        run: nix flake check --all-systems --no-build
+
+      - name: Build and smoke-test the installed CLI
+        run: nix flake check --print-build-logs
+
   live-smoke:
     name: Live provider check (manual)
     if: github.event_name == 'workflow_dispatch' && inputs.live-provider != ''

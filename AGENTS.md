@@ -18,6 +18,15 @@ uvx lefthook install
 
 Pushing runs the quality gates automatically. No need to run checks manually.
 
+## Nix packaging
+
+- `nix/package.nix` builds from `package-lock.json`; keep every dependency's
+  integrity hash present, including nested dependencies.
+- When the npm lockfile changes, update `npmDepsHash`: temporarily set it to
+  `lib.fakeHash`, run `nix build`, and use the reported hash.
+- Validate packaging changes with `nix flake check`. CI builds on Linux and macOS
+  and checks the installed CLI without provider credentials.
+
 ## Release engineering
 
 - Use `tenzir-ship` for changelog management and releasing
