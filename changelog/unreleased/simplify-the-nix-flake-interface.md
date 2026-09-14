@@ -1,6 +1,6 @@
 ---
 title: Simplify the Nix flake interface
-type: breaking
+type: bugfix
 authors:
   - mavam
 created: 2026-09-14T15:57:21.541442Z
