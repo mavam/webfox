@@ -3,6 +3,7 @@
   buildNpmPackage,
   nodejs_24,
   biome,
+  jq,
 }:
 
 let
@@ -15,7 +16,15 @@ buildNpmPackage {
 
   nodejs = nodejs_24;
   npmDepsFetcherVersion = 2;
-  npmDepsHash = "sha256-f1M39ukHmA4pKwEhZa5MfG7rCRJCr1UiTzYHb2Mvznw=";
+  npmDepsHash = "sha256-H/giK59DxaxWFeBGW2giGbm5+VJT2rmMpLyQPKhIn9w=";
+
+  # Root package versions do not affect dependencies. Normalize them in both
+  # the fetcher and build so release bumps preserve the dependency cache hash.
+  postPatch = ''
+    ${lib.getExe jq} '.version = "0.0.0" | .packages[""].version = "0.0.0"' \
+      package-lock.json > package-lock.json.tmp
+    mv package-lock.json.tmp package-lock.json
+  '';
 
   # Build explicitly after npm ci, rather than through the prepare lifecycle.
   npmFlags = [ "--ignore-scripts" ];
