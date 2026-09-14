@@ -24,7 +24,7 @@ Pushing runs the quality gates automatically. No need to run checks manually.
   integrity hash present, including nested dependencies.
 - When the npm lockfile changes, update `npmDepsHash`: temporarily set it to
   `lib.fakeHash`, run `nix build`, and use the reported hash.
-- Validate packaging changes with `nix flake check`. CI builds on Linux and macOS
+- Validate packaging changes with `nix build`. CI builds on Linux and macOS
   and checks the installed CLI without provider credentials.
 
 ## Release engineering
