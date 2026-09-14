@@ -1,0 +1,9 @@
+created: 2026-09-14
+title: Simpler Nix support
+intro: >-
+  Webfox simplifies its Nix flake to one default package per supported platform. Build
+  and smoke-test the CLI with nix build, without separate overlays, aliases, or check
+  outputs.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.4.1
