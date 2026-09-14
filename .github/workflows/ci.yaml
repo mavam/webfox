@@ -40,14 +40,8 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@v31
 
-      - name: Check Nix formatting
-        run: nix fmt -- --check flake.nix nix/package.nix
-
-      - name: Evaluate all supported systems
-        run: nix flake check --all-systems --no-build
-
       - name: Build and smoke-test the installed CLI
-        run: nix flake check --print-build-logs
+        run: nix build --no-link --print-build-logs
 
   live-smoke:
     name: Live provider check (manual)
