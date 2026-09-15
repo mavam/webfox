@@ -139,7 +139,7 @@ describe("vertical web rendering", () => {
     ]);
     expect(th.fg).toHaveBeenCalledWith("dim", parameters);
     for (const key of ["limit", "type", "contents.text", "includeDomains"])
-      expect(th.bold).toHaveBeenCalledWith(key);
+      expect(th.bold).not.toHaveBeenCalledWith(key);
     expect(th.bold).not.toHaveBeenCalledWith("neural");
     expect(call.render(60)).toHaveLength(1);
     expect(call.render(60)[0]).toContain("ctrl+o to expand");
@@ -147,6 +147,10 @@ describe("vertical web rendering", () => {
     call.update(args, th, true);
     expect(call.render(60).length).toBeGreaterThan(1);
     expect(call.render(60).join("\n")).toContain("docs.example.com");
+    expect(th.bold).toHaveBeenCalledWith("web search");
+    expect(
+      vi.mocked(th.bold).mock.calls.every(([text]) => text === "web search"),
+    ).toBe(true);
     for (const width of [1, 6, 20, 80])
       for (const line of call.render(width))
         expect(visibleWidth(line)).toBeLessThanOrEqual(width);

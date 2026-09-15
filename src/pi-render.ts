@@ -82,9 +82,7 @@ export class WebCall implements Component {
     const { args, theme, capability } = this;
     const title = theme.fg("toolTitle", theme.bold(`web ${capability}`));
     let text = title;
-    const parameters = callParameters(capability, args, (key) =>
-      theme.bold(key),
-    );
+    const parameters = callParameters(capability, args);
     if (parameters) text += theme.fg("dim", ` ${parameters}`);
     if (this.expanded)
       return visibleWidth(text) <= width
