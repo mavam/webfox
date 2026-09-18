@@ -1,0 +1,26 @@
+You can now retrieve historical page versions with Exa Snapshot, with search and page extraction options exposed to models in pi. This release also makes pi tool-call parameter styling consistent.
+
+## 🚀 Features
+
+### Historical page versions with Exa Snapshot
+
+You can now retrieve historical page versions with Exa Snapshot in search and page extraction. The options and usage guidance are also available to models when Exa is selected in pi.
+
+For search, put the cutoff inside `contents`:
+
+```sh
+web search "Python release notes" --provider exa \
+  --options-json '{"contents":{"snapshotAsOf":"2026-07-01T00:00:00Z"}}'
+```
+
+For page extraction, use `--options-json '{"snapshotAsOf":"2026-07-01T00:00:00Z","text":true}'`. Exa returns the newest stored page version at or before the cutoff. Snapshot search supports `auto`, `fast`, and `instant` without `category`; omit live-fetch and subpage controls. Access and lookback are limited during the research preview.
+
+*By @mavam in #52.*
+
+## 🐞 Bug fixes
+
+### Consistent dim styling for Pi parameter keys
+
+Pi tool-call headers now render parameter keys and values in the same dim color without bold keys. The tool title remains bold.
+
+*By @mavam.*

@@ -1,0 +1,9 @@
+created: 2026-09-18
+title: Historical page versions with Exa Snapshot
+intro: >-
+  You can now retrieve historical page versions with Exa Snapshot, with search and
+  page extraction options exposed to models in pi. This release also makes pi tool-call
+  parameter styling consistent.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.4.2
