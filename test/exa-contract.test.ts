@@ -14,9 +14,14 @@ let baseUrl: string;
 const server = createServer(async (request, reply) => {
   let body = "";
   for await (const chunk of request) body += chunk;
-  requests.push({ path: request.url!, body: JSON.parse(body) });
+  const parsed = JSON.parse(body);
+  requests.push({ path: request.url!, body: parsed });
   reply.writeHead(status, { "content-type": "application/json" });
-  reply.end(JSON.stringify(response));
+  reply.end(
+    JSON.stringify(
+      typeof response === "function" ? response(parsed) : response,
+    ),
+  );
 });
 beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -49,6 +54,107 @@ function client() {
     env: {},
   });
 }
+
+const cutoff = "2026-07-01T00:00:00Z";
+
+it.each(["auto", "fast", "instant"])(
+  "forwards snapshot search with type %s through the real Exa SDK",
+  async (type) => {
+    const result = await client().search({
+      provider: "exa",
+      queries: ["historical query"],
+      options: { type, contents: { snapshotAsOf: cutoff } },
+    });
+    expect(result.status).toBe("ok");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      path: "/search",
+      body: { type, contents: { text: true, snapshotAsOf: cutoff } },
+    });
+    expect(requests[0].body).not.toHaveProperty("snapshotAsOf");
+  },
+);
+
+it("forwards contents snapshots and preserves gaps for omitted pages", async () => {
+  const missing = "https://missing.example.com";
+  const found = "https://example.com";
+  response = ({ urls }: { urls: string[] }) => ({
+    results: urls.includes(found)
+      ? [{ id: found, url: found, text: "Historical text" }]
+      : [],
+    statuses: urls.map((id) =>
+      id === missing
+        ? { id, status: "error", tag: "CONTENT_NOT_CACHED" }
+        : { id, status: "success", source: "cached" },
+    ),
+  });
+  const result = await client().contents({
+    provider: "exa",
+    urls: [missing, found],
+    options: { snapshotAsOf: cutoff, text: true },
+  });
+  expect(requests).toHaveLength(2);
+  expect(requests).toEqual(
+    expect.arrayContaining(
+      [missing, found].map((url) => ({
+        path: "/contents",
+        body: { urls: [url], snapshotAsOf: cutoff, text: true },
+      })),
+    ),
+  );
+  expect(result.status).toBe("partial");
+  expect(result.results[0]).toMatchObject({ ok: false });
+  expect(result.results[1]).toMatchObject({
+    ok: true,
+    value: { url: found, content: "Historical text" },
+  });
+});
+
+it.each([42, null, ""])(
+  "rejects invalid snapshot values before contacting Exa: %j",
+  async (snapshotAsOf) => {
+    await expect(
+      client().search({
+        provider: "exa",
+        queries: ["q"],
+        options: { contents: { snapshotAsOf } },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(
+      client().contents({
+        provider: "exa",
+        urls: ["https://example.com"],
+        options: { snapshotAsOf },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    expect(requests).toEqual([]);
+  },
+);
+
+it("exposes snapshot options and restrictions in model-facing metadata", () => {
+  const search = optionSchema(exaProvider, "search")!;
+  const contents = optionSchema(exaProvider, "contents")!;
+  expect(
+    (search.properties.contents as TObject).properties.snapshotAsOf,
+  ).toMatchObject({
+    type: "string",
+    description: expect.stringContaining("ISO datetime"),
+  });
+  expect(contents.properties.snapshotAsOf).toEqual(
+    (search.properties.contents as TObject).properties.snapshotAsOf,
+  );
+  expect(() =>
+    prepareToolArguments(Type.Object({ options: search }), {
+      options: { snapshotAsOf: cutoff },
+    }),
+  ).toThrow("Use options.contents.snapshotAsOf instead.");
+  expect(
+    exaProvider.capabilities.search!.promptGuidelines!.join(" "),
+  ).toContain("Snapshot bounds content, not ranking");
+  expect(
+    exaProvider.capabilities.contents!.promptGuidelines!.join(" "),
+  ).toContain("options.snapshotAsOf");
+});
 
 it.each([-1, 0, 24, 720])(
   "forwards nested freshness %i through the real Exa SDK",

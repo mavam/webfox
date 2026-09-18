@@ -1388,6 +1388,11 @@
                           ],
                           "description": "Include AI-generated summary."
                         },
+                        "snapshotAsOf": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "ISO datetime cutoff, such as '2026-07-01T00:00:00Z'. Return the newest stored page version at or before this instant; pages without an eligible version are omitted. Do not combine with maxAgeHours, livecrawlTimeout, or subpages."
+                        },
                         "livecrawlTimeout": {
                           "type": "integer",
                           "minimum": 1,
@@ -1441,7 +1446,7 @@
                         }
                       },
                       "additionalProperties": false,
-                      "description": "Content extraction and freshness controls. Put text, highlights, summary, maxAgeHours, and livecrawlTimeout here, not directly in options."
+                      "description": "Content extraction, freshness, and historical snapshot controls. Put text, highlights, summary, snapshotAsOf, maxAgeHours, and livecrawlTimeout here, not directly in options."
                     }
                   },
                   "description": "Exa search options.",
@@ -1449,6 +1454,18 @@
                 },
                 "contents": {
                   "type": "object",
+                  "properties": {
+                    "snapshotAsOf": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "ISO datetime cutoff, such as '2026-07-01T00:00:00Z'. Return the newest stored page version at or before this instant; pages without an eligible version are omitted. Do not combine with maxAgeHours, livecrawlTimeout, or subpages."
+                    },
+                    "text": {
+                      "type": "boolean",
+                      "description": "Include text content."
+                    }
+                  },
+                  "description": "Exa contents options.",
                   "additionalProperties": false
                 },
                 "answer": {
