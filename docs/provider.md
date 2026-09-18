@@ -74,6 +74,26 @@ web search "Node.js release notes" --provider exa
 web research "Compare databases for an analytics service" --provider exa --timeout 20m
 ```
 
+Use [Exa Snapshot](https://exa.ai/docs/search/snapshot) to retrieve the newest
+stored page version at or before an ISO datetime. For search, set
+`options.contents.snapshotAsOf`; for page extraction, set `options.snapshotAsOf`.
+Both options are also exposed to the model when Exa is selected in pi.
+
+```sh
+web search "Python release notes" --provider exa \
+  --options-json '{"contents":{"snapshotAsOf":"2026-07-01T00:00:00Z"}}'
+web contents https://docs.python.org/3/whatsnew/ --provider exa \
+  --options-json '{"snapshotAsOf":"2026-07-01T00:00:00Z","text":true}'
+```
+
+Snapshot search supports `auto`, `fast`, and `instant`, without `category`.
+Do not combine snapshots with `maxAgeHours`, `livecrawl`, `livecrawlTimeout`, or
+`subpages`, including saved defaults. Pages without an eligible snapshot are
+omitted by Exa; page extraction reports those URLs as failures. The cutoff bounds
+page content, not ranking: Exa still discovers candidate URLs using current
+retrieval signals. Snapshot is a research preview with limited access and
+lookback; consult Exa's documentation for current limits.
+
 ## Firecrawl
 
 Supports search, page extraction, and page-scoped answers. Set `FIRECRAWL_API_KEY`

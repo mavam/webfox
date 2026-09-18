@@ -1,5 +1,12 @@
 import { defineProvider } from "../definition.js";
 
+const snapshotAsOf = {
+  type: "string",
+  minLength: 1,
+  description:
+    "ISO datetime cutoff, such as '2026-07-01T00:00:00Z'. Return the newest stored page version at or before this instant; pages without an eligible version are omitted. Do not combine with maxAgeHours, livecrawlTimeout, or subpages.",
+};
+
 export const exaProvider = defineProvider({
   id: "exa",
   label: "Exa",
@@ -213,6 +220,7 @@ export const exaProvider = defineProvider({
                 ],
                 description: "Include AI-generated summary.",
               },
+              snapshotAsOf,
               livecrawlTimeout: {
                 type: "integer",
                 minimum: 1,
@@ -269,7 +277,7 @@ export const exaProvider = defineProvider({
             },
             additionalProperties: false,
             description:
-              "Content extraction and freshness controls. Put text, highlights, summary, maxAgeHours, and livecrawlTimeout here, not directly in options.",
+              "Content extraction, freshness, and historical snapshot controls. Put text, highlights, summary, snapshotAsOf, maxAgeHours, and livecrawlTimeout here, not directly in options.",
           },
         },
         description: "Exa search options.",
@@ -280,12 +288,27 @@ export const exaProvider = defineProvider({
         "Set includeDomains or excludeDomains when the task names preferred sources, requires primary sources, or needs noisy domains filtered out.",
         "For fresh Exa search content, use options.contents.maxAgeHours=0; for cache-only retrieval use -1. Never put maxAgeHours at the top level of options.",
         "Do not send deprecated livecrawl, even alongside maxAgeHours. Remove livecrawl rather than moving it into contents. Exa ignores startCrawlDate/endCrawlDate; use startPublishedDate/endPublishedDate to filter publication dates, not cache freshness.",
+        "For historical page versions, set options.contents.snapshotAsOf to an ISO datetime. Use type auto, fast, or instant; omit category, maxAgeHours, livecrawl, livecrawlTimeout, and subpages. Snapshot bounds content, not ranking: Exa still discovers URLs using current retrieval signals. Snapshot is a research preview with limited access and lookback.",
         "Use includeText/excludeText for short required or forbidden phrases in page text.",
         "Request contents.text, contents.highlights, or contents.summary only when snippets are insufficient and richer source context is needed directly in search results.",
       ],
       retrySafe: true,
     },
     contents: {
+      options: {
+        type: "object",
+        properties: {
+          snapshotAsOf,
+          text: {
+            type: "boolean",
+            description: "Include text content.",
+          },
+        },
+        description: "Exa contents options.",
+      },
+      promptGuidelines: [
+        "For historical page versions, set options.snapshotAsOf to an ISO datetime (not nested inside contents). Exa returns the newest stored version at or before that instant and omits pages without an eligible version. Snapshot is a research preview with limited access and lookback.",
+      ],
       retrySafe: true,
     },
     answer: {
