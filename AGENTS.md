@@ -10,11 +10,16 @@ See `README.md` for user-facing documentation.
 
 ## Setup
 
-Install Lefthook once per clone:
+Enter the development shell and install dependencies and hooks:
 
 ```bash
-uvx lefthook install
+nix develop
+bun install --frozen-lockfile
+lefthook install
 ```
+
+For automatic activation with direnv and nix-direnv configured, run
+`direnv allow` once in this checkout.
 
 Pushing runs the quality gates automatically. No need to run checks manually.
 

@@ -5,13 +5,20 @@
 
   outputs =
     { nixpkgs, ... }:
-    {
-      packages = nixpkgs.lib.genAttrs [
+    let
+      forAllSystems = nixpkgs.lib.genAttrs [
         "aarch64-darwin"
         "aarch64-linux"
         "x86_64-linux"
-      ] (system: {
+      ];
+    in
+    {
+      packages = forAllSystems (system: {
         default = nixpkgs.legacyPackages.${system}.callPackage ./nix/package.nix { };
+      });
+
+      devShells = forAllSystems (system: {
+        default = nixpkgs.legacyPackages.${system}.callPackage ./nix/shell.nix { };
       });
     };
 }

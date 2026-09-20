@@ -43,6 +43,24 @@ jobs:
       - name: Build and smoke-test the installed CLI
         run: nix build --no-link --print-build-logs
 
+      - name: Smoke-test the development shell
+        run: |
+          # Expand BIOME_BINARY inside the development shell, not the runner shell.
+          # shellcheck disable=SC2016
+          nix develop --command bash -euc '
+            node --version
+            npm --version
+            bun --version
+            biome --version
+            git --version
+            jq --version
+            lefthook version
+            uv --version
+            actionlint --version
+            nixfmt --check flake.nix nix/*.nix
+            test -x "$BIOME_BINARY"
+          '
+
   live-smoke:
     name: Live provider check (manual)
     if: github.event_name == 'workflow_dispatch' && inputs.live-provider != ''
