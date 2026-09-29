@@ -190,6 +190,13 @@ try {
     ],
     { cwd: directory, stdio: "inherit" },
   );
+  // Pi suppresses peer installation and supplies typebox through its own
+  // module mapping. Remove the peer npm installed for the standalone checks
+  // above, so a native import of a physical copy fails here.
+  await rm(join(directory, "node_modules", "typebox"), {
+    recursive: true,
+    force: true,
+  });
   execFileSync(
     process.execPath,
     [

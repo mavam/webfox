@@ -100,6 +100,9 @@ export default function webExtension(pi: ExtensionAPI): void {
         "Output is truncated to 2000 lines or 50 KiB; full results are saved to a file when truncated.",
       ].join("\n"),
       parameters,
+      // Let permission extensions and tool loadouts treat web access as a
+      // read-only call that reaches the open web.
+      annotations: { readOnlyHint: true, openWorldHint: true },
       prepareArguments(args) {
         // Pi still validates and coerces the returned arguments before execute.
         return prepareToolArguments(parameters, args) as Static<
@@ -186,12 +189,12 @@ export default function webExtension(pi: ExtensionAPI): void {
           );
           body += `\n\nFull results: ${fullOutputPath}`;
         }
-        // Preserve partial results, and mark the tool error through Pi's event
-        // API instead of the ignored isError property on execute return values.
+        // Preserve partial results while still reporting failed inputs as a
+        // tool error to the model and the UI.
         return {
           content: [{ type: "text" as const, text: body }],
+          isError: result.status === "partial",
           details: {
-            webProviderResult: true,
             status: result.status,
             webInputStatus: true,
             capability,
@@ -209,17 +212,6 @@ export default function webExtension(pi: ExtensionAPI): void {
       },
     });
   }
-  pi.on("tool_result", (event) => {
-    if (
-      event.details &&
-      typeof event.details === "object" &&
-      "webProviderResult" in event.details &&
-      event.details.webProviderResult === true &&
-      "status" in event.details &&
-      event.details.status === "partial"
-    )
-      return { isError: true };
-  });
 }
 const descriptions: Record<Capability, string> = {
   search:
