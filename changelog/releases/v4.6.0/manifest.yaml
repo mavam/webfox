@@ -1,0 +1,9 @@
+created: 2026-09-29
+title: Structured web results for Pi scripts
+intro: >-
+  Webfox now returns structured results to scripts that call its Pi tools, so a partial
+  result keeps its completed inputs instead of failing the script. This release also
+  requires Pi 0.99 or later and adds a reproducible Nix development shell for contributors.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.5.0
