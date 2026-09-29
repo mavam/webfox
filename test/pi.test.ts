@@ -50,6 +50,11 @@ it("uses application inspection and execution and marks partial tool results", a
     "Web Research",
   ]);
   expect(JSON.stringify(tools)).not.toMatch(/fox|mux/i);
+  for (const tool of tools)
+    expect(tool.annotations).toEqual({
+      readOnlyHint: true,
+      openWorldHint: true,
+    });
   const theme = {
     fg: vi.fn((_color, text) => text),
     bold: vi.fn((text) => text),
@@ -89,13 +94,9 @@ it("uses application inspection and execution and marks partial tool results", a
     { cwd: directory },
   );
   expect(result.content[0].text).toContain("Result for success");
-  expect(result.details.webProviderResult).toBe(true);
-  expect(
-    events.tool_result({ details: { status: "partial" } }),
-  ).toBeUndefined();
-  expect(events.tool_result({ details: result.details })).toEqual({
-    isError: true,
-  });
+  expect(result.details.status).toBe("partial");
+  expect(result.isError).toBe(true);
+  expect(events).not.toHaveProperty("tool_result");
   const updates: any[] = [];
   const contents = await tools[1].execute(
     "urls",
@@ -105,6 +106,7 @@ it("uses application inspection and execution and marks partial tool results", a
     { cwd: directory },
   );
   expect(updates[0].details.inputs[0].state).toBe("queued");
+  expect(contents.isError).toBe(true);
   expect(contents.details.inputs).toEqual([
     { input: "https://ok.test", state: "done" },
     { input: "https://error.test", state: "failed" },
@@ -131,6 +133,7 @@ it("uses application inspection and execution and marks partial tool results", a
     expect(completed.details.inputs).toEqual([
       { input: "question", state: "done" },
     ]);
+    expect(completed.isError).toBe(false);
     expect(
       tools[index]
         .renderResult(
