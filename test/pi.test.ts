@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
@@ -7,6 +7,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import webExtension from "../src/pi.js";
 import { customConfig } from "./helpers.js";
 import { Check } from "typebox/value";
+import { DOCUMENT_SCHEMAS } from "../src/document-schema.js";
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
@@ -55,6 +56,12 @@ it("uses application inspection and execution and marks partial tool results", a
       readOnlyHint: true,
       openWorldHint: true,
     });
+  expect(tools.map((tool) => tool.outputSchema)).toEqual([
+    DOCUMENT_SCHEMAS.search,
+    DOCUMENT_SCHEMAS.contents,
+    DOCUMENT_SCHEMAS.answer,
+    DOCUMENT_SCHEMAS.research,
+  ]);
   const theme = {
     fg: vi.fn((_color, text) => text),
     bold: vi.fn((text) => text),
@@ -96,6 +103,12 @@ it("uses application inspection and execution and marks partial tool results", a
   expect(result.content[0].text).toContain("Result for success");
   expect(result.details.status).toBe("partial");
   expect(result.isError).toBe(true);
+  // Failed inputs still reach programmatic callers, next to the good ones.
+  expect(Check(tools[0].outputSchema, result.structuredContent)).toBe(true);
+  expect(result.structuredContent).toEqual(result.details.result);
+  expect(
+    result.structuredContent.results.map((entry: any) => entry.ok),
+  ).toEqual([true, false]);
   expect(events).not.toHaveProperty("tool_result");
   const updates: any[] = [];
   const contents = await tools[1].execute(
@@ -107,6 +120,7 @@ it("uses application inspection and execution and marks partial tool results", a
   );
   expect(updates[0].details.inputs[0].state).toBe("queued");
   expect(contents.isError).toBe(true);
+  expect(Check(tools[1].outputSchema, contents.structuredContent)).toBe(true);
   expect(contents.details.inputs).toEqual([
     { input: "https://ok.test", state: "done" },
     { input: "https://error.test", state: "failed" },
@@ -134,6 +148,10 @@ it("uses application inspection and execution and marks partial tool results", a
       { input: "question", state: "done" },
     ]);
     expect(completed.isError).toBe(false);
+    expect(Check(tools[index].outputSchema, completed.structuredContent)).toBe(
+      true,
+    );
+    expect(completed.structuredContent.status).toBe("ok");
     expect(
       tools[index]
         .renderResult(
@@ -153,6 +171,47 @@ it("uses application inspection and execution and marks partial tool results", a
       })
       .render(80),
   ).toEqual(["✔︎ https://ok.test", "✘︎ https://error.test"]);
+});
+
+it("returns the complete document as structured content when the text is truncated", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "webfox-structured-"));
+  paths.push(directory);
+  const config = customConfig();
+  const lines = 5000;
+  config.providers!.custom!.commands!.contents!.argv = [
+    process.execPath,
+    "-e",
+    `console.log(JSON.stringify({ answers: [{ inputIndex: 0, url: "https://big.test", content: Array.from({ length: ${lines} }, (_, index) => "line " + index).join("\\n") }] }))`,
+  ];
+  const path = join(directory, "config.yaml");
+  await writeFile(path, stringify(config, { aliasDuplicateObjects: false }));
+  vi.stubEnv("WEBFOX_CONFIG", path);
+  const tools: any[] = [];
+  webExtension({
+    registerTool: (tool: any) => tools.push(tool),
+    on() {},
+  } as any);
+  const tool = tools.find((tool) => tool.name === "web_contents");
+  const result = await tool.execute(
+    "big",
+    { urls: ["https://big.test"] },
+    undefined,
+    undefined,
+    { cwd: directory },
+  );
+  // The model-facing text is capped and points at the saved document.
+  expect(result.content[0].text).toContain("Full results:");
+  expect(result.content[0].text).not.toContain(`line ${lines - 1}`);
+  expect(result.details.fullOutputPath).toBeDefined();
+  // The session keeps a pointer instead of the document.
+  expect(result.details).not.toHaveProperty("result");
+  // Programmatic callers get every line, and the same document as the file.
+  const document = result.structuredContent;
+  expect(Check(tool.outputSchema, document)).toBe(true);
+  expect(document.results[0].value.content).toContain(`line ${lines - 1}`);
+  expect(
+    JSON.parse(await readFile(result.details.fullOutputPath, "utf8")),
+  ).toEqual(document);
 });
 
 it("rejects misplaced provider parameters before execution with a repair hint", async () => {
