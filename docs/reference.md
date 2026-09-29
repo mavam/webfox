@@ -179,3 +179,10 @@ extension forwards cancellation and progress, marks partial results as errors,
 and truncates tool output at 2,000 lines or 50 KiB, with full results saved to a
 temporary file. It needs no globally installed `web` command and starts no
 background research jobs.
+
+Each tool declares the [JSON result document](./cli-experience.md#json-results)
+as its output schema and returns that document as structured content. Scripts
+that call the tools through Pi's codemode receive it as an object instead of
+parsing text, including the completed inputs of a partial result. Structured
+content is never truncated, and Pi neither sends it to the model nor stores it
+in the session.

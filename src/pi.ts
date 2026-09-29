@@ -19,6 +19,7 @@ import { renderTextDocument } from "./render.js";
 import { prepareToolArguments } from "./pi-validation.js";
 import { WebfoxError } from "./errors.js";
 import { configurationDiagnostic } from "./pi-diagnostics.js";
+import { DOCUMENT_SCHEMAS } from "./document-schema.js";
 
 export default function webExtension(pi: ExtensionAPI): void {
   const clients = new Map<string, WebClient>();
@@ -103,6 +104,9 @@ export default function webExtension(pi: ExtensionAPI): void {
       // Let permission extensions and tool loadouts treat web access as a
       // read-only call that reaches the open web.
       annotations: { readOnlyHint: true, openWorldHint: true },
+      // Programmatic callers such as codemode scripts receive the result
+      // document itself instead of parsing the rendered text.
+      outputSchema: DOCUMENT_SCHEMAS[capability],
       prepareArguments(args) {
         // Pi still validates and coerces the returned arguments before execute.
         return prepareToolArguments(parameters, args) as Static<
@@ -175,6 +179,9 @@ export default function webExtension(pi: ExtensionAPI): void {
               : capability === "contents"
                 ? await client.contents({ ...request, urls: params.urls! })
                 : await client.research({ ...request, input: params.input! });
+        // The JSON round trip yields the exact document that the CLI prints,
+        // free of undefined values and class instances.
+        const json = JSON.stringify(result);
         const text = renderTextDocument(result);
         const truncated = truncateHead(text);
         let body = truncated.content;
@@ -185,7 +192,7 @@ export default function webExtension(pi: ExtensionAPI): void {
             "result.json",
           );
           await withFileMutationQueue(fullOutputPath, () =>
-            writeFile(fullOutputPath!, JSON.stringify(result), { mode: 0o600 }),
+            writeFile(fullOutputPath!, json, { mode: 0o600 }),
           );
           body += `\n\nFull results: ${fullOutputPath}`;
         }
@@ -193,6 +200,9 @@ export default function webExtension(pi: ExtensionAPI): void {
         // tool error to the model and the UI.
         return {
           content: [{ type: "text" as const, text: body }],
+          // Pi keeps this out of the model's context and the session, so the
+          // text truncation above does not apply. Scripts get every result.
+          structuredContent: JSON.parse(json),
           isError: result.status === "partial",
           details: {
             status: result.status,

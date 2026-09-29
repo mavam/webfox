@@ -222,6 +222,8 @@ try {
         "  const tool = extensions[0].tools.get(name).definition;",
         '  const result = await tool.execute("package-smoke", params, undefined, undefined, { cwd: process.cwd() });',
         '  if (result.details?.status !== "ok") throw new Error(`packed ${name} execution failed`);',
+        "  const document = result.structuredContent;",
+        '  if (!tool.outputSchema || document?.status !== "ok" || `web_${document.capability}` !== name) throw new Error(`packed ${name} lacks structured output`);',
         "}",
       ].join("\n"),
     ],
