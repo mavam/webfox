@@ -26,6 +26,36 @@ describe("package metadata", () => {
       expect(packageJson.bundledDependencies ?? []).not.toContain(peer);
     }
   });
+  it("never lists host-provided Pi packages as dependencies", async () => {
+    const packageJson = JSON.parse(
+      await readFile(resolve("package.json"), "utf8"),
+    );
+    // Pi maps these modules into extensions. A physical copy would bypass
+    // that mapping and duplicate runtime modules, so Pi warns about it.
+    for (const host of [
+      "@earendil-works/pi-ai",
+      "@earendil-works/pi-agent-core",
+      "@earendil-works/pi-coding-agent",
+      "@earendil-works/pi-tui",
+      "typebox",
+    ]) {
+      expect(packageJson.dependencies).not.toHaveProperty(host);
+      expect(packageJson.optionalDependencies ?? {}).not.toHaveProperty(host);
+      expect(packageJson.bundledDependencies ?? []).not.toContain(host);
+    }
+  });
+  it("requires typebox as a peer for the standalone CLI and library", async () => {
+    const packageJson = JSON.parse(
+      await readFile(resolve("package.json"), "utf8"),
+    );
+    expect(packageJson.peerDependencies.typebox).toBe("*");
+    expect(packageJson.peerDependenciesMeta ?? {}).not.toHaveProperty(
+      "typebox",
+    );
+    // A devDependency of the same name outranks the peer edge, so production
+    // installs such as the Nix package would prune typebox and break the CLI.
+    expect(packageJson.devDependencies).not.toHaveProperty("typebox");
+  });
   it("keeps schema URLs on latest independently of the package version", async () => {
     const packageJson = JSON.parse(
       await readFile(resolve("package.json"), "utf8"),
