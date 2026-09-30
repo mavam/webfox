@@ -3,6 +3,8 @@ title: Web tool discovery in Pi codemode
 type: change
 authors:
   - mavam
+prs:
+  - 55
 created: 2026-09-30T07:18:27.616097Z
 ---
 
