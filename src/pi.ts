@@ -93,6 +93,10 @@ export default function webExtension(pi: ExtensionAPI): void {
     );
     pi.registerTool({
       name: `web_${capability}`,
+      namespace: {
+        name: "web",
+        description: "Search, extract pages, answer, and research the web.",
+      },
       label: `Web ${capability[0].toUpperCase()}${capability.slice(1)}`,
       // Keep provider guidance with the tool schema, including with custom system prompts.
       description: [
