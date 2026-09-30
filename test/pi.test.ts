@@ -62,6 +62,12 @@ it("uses application inspection and execution and marks partial tool results", a
       readOnlyHint: true,
       openWorldHint: true,
     });
+    expect(tool.description).toContain(
+      "Model-facing text is truncated to 2000 lines or 50 KiB",
+    );
+    expect(tool.description).toContain(
+      "Codemode scripts receive complete structured results.",
+    );
   }
   expect(tools.map((tool) => tool.outputSchema)).toEqual([
     DOCUMENT_SCHEMAS.search,

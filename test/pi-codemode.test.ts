@@ -301,6 +301,65 @@ it("receives full intermediate contents and emits only selected evidence", async
   expect(JSON.stringify(session.messages)).not.toContain("Full results:");
 });
 
+it.each([
+  ["on", false],
+  ["on", true],
+  ["only", false],
+  ["only", true],
+] as const)(
+  "respects result redaction in %s mode with structured replacement=%s",
+  async (mode, replaceStructured) => {
+    const secret = "provider-only-secret";
+    const redactedText = "[redacted]";
+    const config = customConfig();
+    config.providers!.custom!.commands!.contents!.argv = [
+      process.execPath,
+      "-e",
+      `console.log(JSON.stringify({ answers: [{ inputIndex: 0, url: "https://example.test", content: "${secret}" }] }))`,
+    ];
+    let original: unknown;
+    const nested: ToolResultEvent[] = [];
+    const session = await createSession(config, mode, (pi) => {
+      pi.on("tool_result", (event) => {
+        if (event.toolName !== "web_contents") return;
+        original = event.structuredContent;
+        const redacted = JSON.parse(JSON.stringify(original));
+        redacted.results[0].value.content = redactedText;
+        return {
+          content: [{ type: "text", text: redactedText }],
+          details: {},
+          ...(replaceStructured ? { structuredContent: redacted } : {}),
+        };
+      });
+      // Observe the post-redaction result seen by later hooks.
+      pi.on("tool_result", (event) => {
+        if (event.toolName === "web_contents") nested.push(event);
+      });
+    });
+    const { result } = await runScript(
+      session,
+      'text({ value: await tools.web_contents({ urls: ["https://example.test"] }) });',
+    );
+    expect(JSON.stringify(original)).toContain(secret);
+    expect(result.isError).toBe(false);
+    expect(nested).toHaveLength(1);
+    expect(nested[0].content).toEqual([{ type: "text", text: redactedText }]);
+    expect(nested[0].details).toEqual({});
+    if (replaceStructured) {
+      const document = output(result).value;
+      expect(document.capability).toBe("contents");
+      expect(document.results[0].value.content).toBe(redactedText);
+      expect(nested[0].structuredContent).toEqual(document);
+    } else {
+      // Pi drops structured data when a hook replaces only the text.
+      expect(nested[0].structuredContent).toBeUndefined();
+      expect(output(result)).toEqual({ value: redactedText });
+    }
+    expect(JSON.stringify(nested)).not.toContain(secret);
+    expect(JSON.stringify(session.messages)).not.toContain(secret);
+  },
+);
+
 it("rejects invalid and permission-blocked nested calls without invoking providers", async () => {
   const executed: string[] = [];
   const session = await createSession(customConfig(), "on", (pi) => {

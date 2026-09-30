@@ -119,6 +119,43 @@ describe("vertical web rendering", () => {
     },
   );
 
+  it.each(["search", "contents", "answer", "research"] as const)(
+    "recolors %s calls and status rows after a live theme change",
+    (capability) => {
+      let foreground = "\x1b[34m";
+      // Pi's live theme follows terminal palette updates without replacing
+      // the reference held by existing components.
+      const liveTheme = {
+        ...theme(),
+        fg: (_color: string, text: string) => `${foreground}${text}\x1b[39m`,
+      } as Theme;
+      const call = new WebCall(capability);
+      call.update({}, liveTheme, false);
+      const statuses = renderWebResult(
+        result(capability, [{ input: "Question", state: "done" }]),
+        collapsed,
+        liveTheme,
+        false,
+      );
+      const components = [call, statuses];
+      const before = components.map((component) =>
+        component.render(120).join("\n"),
+      );
+      for (const text of before) expect(text).toContain("\x1b[34m");
+
+      foreground = "\x1b[31m";
+      components.forEach((component) => component.invalidate());
+      components.forEach((component, index) => {
+        const text = component.render(120).join("\n");
+        expect(text).toContain("\x1b[31m");
+        expect(text).not.toContain("\x1b[34m");
+        expect(stripVTControlCharacters(text)).toBe(
+          stripVTControlCharacters(before[index]),
+        );
+      });
+    },
+  );
+
   it("shows explicit provider choices in a gray header, with full details on expansion", () => {
     const call = new WebCall("search");
     const th = theme();

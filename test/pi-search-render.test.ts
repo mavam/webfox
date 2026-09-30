@@ -105,6 +105,31 @@ describe("plain-text search result rendering", () => {
     ).toEqual(["✔︎ TypeScript release notes"]);
   });
 
+  it("recolors existing search results after a live theme change", () => {
+    let foreground = "\x1b[34m";
+    const liveTheme = {
+      ...theme(),
+      fg: (_color: string, text: string) => `${foreground}${text}\x1b[39m`,
+    } as Theme;
+    const component = renderSearchResult(
+      { result: document() },
+      "unused",
+      liveTheme,
+    );
+    const before = component.render(200).join("\n");
+    expect(before).toContain("\x1b[34m");
+
+    foreground = "\x1b[31m";
+    component.invalidate();
+    const after = component.render(200).join("\n");
+    expect(after).toContain("\x1b[31m");
+    expect(after).not.toContain("\x1b[34m");
+    expect(stripVTControlCharacters(after)).toBe(
+      stripVTControlCharacters(before),
+    );
+    expect(after).toContain("\x1b]8;;https://example.com/packages\x1b\\");
+  });
+
   it("formats query headings, empty results, and partial failures explicitly", () => {
     const doc = document();
     doc.status = "partial";

@@ -16,3 +16,5 @@ text(found);
 ```
 
 The tool names stay the same, and you can still call them directly without enabling codemode. The README now includes recipes for chaining search and page extraction, running independent calls in parallel, handling partial failures, and returning only selected evidence to the model.
+
+Tool descriptions now clarify that only model-facing text is truncated; codemode scripts receive complete structured results.

@@ -102,7 +102,7 @@ export default function webExtension(pi: ExtensionAPI): void {
       description: [
         descriptions[capability],
         ...(inspection.promptGuidelines ?? []),
-        "Output is truncated to 2000 lines or 50 KiB; full results are saved to a file when truncated.",
+        "Model-facing text is truncated to 2000 lines or 50 KiB; full results are saved to a file when truncated. Codemode scripts receive complete structured results.",
       ].join("\n"),
       parameters,
       // Let permission extensions and tool loadouts treat web access as a
