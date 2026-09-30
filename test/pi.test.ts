@@ -51,11 +51,18 @@ it("uses application inspection and execution and marks partial tool results", a
     "Web Research",
   ]);
   expect(JSON.stringify(tools)).not.toMatch(/fox|mux/i);
-  for (const tool of tools)
+  for (const tool of tools) {
+    expect(tool.namespace).toEqual({
+      name: "web",
+      description: "Search, extract pages, answer, and research the web.",
+    });
+    // Direct calls remain available without enabling codemode.
+    expect(tool.exposure ?? "direct").toBe("direct");
     expect(tool.annotations).toEqual({
       readOnlyHint: true,
       openWorldHint: true,
     });
+  }
   expect(tools.map((tool) => tool.outputSchema)).toEqual([
     DOCUMENT_SCHEMAS.search,
     DOCUMENT_SCHEMAS.contents,
