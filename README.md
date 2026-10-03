@@ -355,6 +355,25 @@ The client also provides `contents`, `answer`, and `research`. See the
 [library reference](./docs/reference.md#typescript-library) for request controls,
 configuration, progress, and errors.
 
+## 🧬 Use with Pi Durable
+
+A custom Pi Durable host can install the web tools directly:
+
+```ts
+import { createWebfoxExtension } from "webfox/durable";
+
+registry.install(createWebfoxExtension({ cwd: process.cwd() }));
+```
+
+The adapter uses the shared Webfox configuration and provider-specific schemas.
+Each call follows its conversation's execution environment, streams progress,
+and preserves partial failures. Large text results are saved to private files.
+Interrupted requests are not replayed automatically, since providers may charge
+for them. Cancelling a request may not cancel a provider's already-running job.
+
+The adapter requires Pi Durable 1.0. It does not install a CLI, register standard
+Pi renderers, or provide codemode's structured-result interface.
+
 ## 🩺 Troubleshooting
 
 - **No provider selected:** Pass `--provider <id>` or save a default with

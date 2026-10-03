@@ -21,7 +21,10 @@ try {
       stdio: ["ignore", "pipe", "inherit"],
     }),
   );
-  archive = resolve(root, packed[0].filename);
+  // npm 12 keys pack output by package name; earlier versions return an array.
+  const [metadata] = Array.isArray(packed) ? packed : Object.values(packed);
+  if (!metadata?.filename) throw new Error("npm pack returned no archive");
+  archive = resolve(root, metadata.filename);
   await writeFile(
     join(directory, "package.json"),
     '{"type":"module","private":true}\n',
@@ -239,7 +242,45 @@ try {
       timeout: 60_000,
     },
   );
-  console.log("Packed package and custom-provider smoke tests passed.");
+  execFileSync(
+    "npm",
+    [
+      "install",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      `@earendil-works/pi-durable@${sourcePackageJson.devDependencies["@earendil-works/pi-durable"]}`,
+      `@earendil-works/chord@${sourcePackageJson.devDependencies["@earendil-works/chord"]}`,
+      "typebox@1.3.27",
+    ],
+    { cwd: directory, stdio: "inherit" },
+  );
+  execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      [
+        'const { createWebfoxExtension } = await import("webfox/durable");',
+        "const extension = createWebfoxExtension({ cwd: process.cwd() });",
+        'const expected = ["web_answer", "web_contents", "web_research", "web_search"];',
+        'if (JSON.stringify(extension.tools.map(tool => tool.name).sort()) !== JSON.stringify(expected)) throw new Error("missing packed durable tools");',
+        'if (extension.tools.some(tool => tool.replay !== "unsafe")) throw new Error("external requests must not replay");',
+      ].join("\n"),
+    ],
+    {
+      cwd: directory,
+      stdio: "inherit",
+      env: { ...process.env, WEBFOX_CONFIG: configPath },
+    },
+  );
+  await readFile(
+    join(directory, "node_modules", "webfox", "dist", "durable.d.ts"),
+    "utf8",
+  );
+  console.log(
+    "Packed package, Pi/durable adapters, and custom-provider smoke tests passed.",
+  );
 } finally {
   if (archive) await rm(archive, { force: true });
   await rm(directory, { recursive: true, force: true });

@@ -6,7 +6,8 @@ import {
   truncateHead,
   withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
-import { Type, type Static, type TObject, type TProperties } from "typebox";
+import type { Static } from "typebox";
+import { descriptions, webToolParameters } from "./tool-definition.js";
 import { WebCall, renderWebResult, type InputStatus } from "./pi-render.js";
 import {
   CAPABILITIES,
@@ -64,33 +65,7 @@ export default function webExtension(pi: ExtensionAPI): void {
   for (const inspection of selected) {
     const capability = inspection.capability;
     const provider = inspection.provider!;
-    const fields: TProperties =
-      capability === "contents"
-        ? { urls: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }) }
-        : capability === "research"
-          ? { input: Type.String({ minLength: 1 }) }
-          : {
-              queries: Type.Array(Type.String({ minLength: 1 }), {
-                minItems: 1,
-                maxItems: 10,
-              }),
-              ...(capability === "search"
-                ? { maxResults: Type.Optional(Type.Integer({ minimum: 1 })) }
-                : {}),
-            };
-    const parameters = Type.Object(
-      {
-        ...fields,
-        ...(inspection.optionSchema
-          ? {
-              options: Type.Optional(
-                inspection.optionSchema as unknown as TObject,
-              ),
-            }
-          : {}),
-      },
-      { additionalProperties: false },
-    );
+    const parameters = webToolParameters(inspection);
     pi.registerTool({
       name: `web_${capability}`,
       namespace: {
@@ -227,11 +202,3 @@ export default function webExtension(pi: ExtensionAPI): void {
     });
   }
 }
-const descriptions: Record<Capability, string> = {
-  search:
-    "Search up to ten queries and return titles, URLs, and snippets in input order.",
-  contents: "Fetch and extract readable contents from web URLs.",
-  answer: "Answer up to ten questions using web-grounded evidence.",
-  research:
-    "Run foreground multi-step web research and return the final report.",
-};

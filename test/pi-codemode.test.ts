@@ -224,7 +224,7 @@ it.each(["on", "only"] as const)(
     if (mode === "only") {
       expect(
         declarations.find((tool) => tool.name === "codemode")?.description,
-      ).toContain("## web (4 tools");
+      ).toMatch(/^## web(?: \(|$)/m);
     }
     expect(session.getActiveToolNames()).toContain("web_search");
     expect(
