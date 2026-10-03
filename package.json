@@ -73,10 +73,14 @@
       "types": "./dist/pi.d.ts",
       "import": "./dist/pi.js"
     },
+    "./durable": {
+      "types": "./dist/durable.d.ts",
+      "import": "./dist/durable.js"
+    },
     "./config.schema.json": "./dist/config.schema.json"
   },
   "scripts": {
-    "build": "rm -rf dist && esbuild index=src/index.ts cli=src/cli.ts pi=src/pi.ts generate-schema=scripts/generate-schema.ts --bundle --splitting --format=esm --platform=node --target=node22 --packages=external --outdir=dist && node dist/generate-schema.js && biome format --write src/config.schema.json >&2 && rm dist/generate-schema.js && tsc --project tsconfig.build.json && cp src/config.schema.json dist/config.schema.json && chmod +x dist/cli.js",
+    "build": "rm -rf dist && esbuild index=src/index.ts cli=src/cli.ts pi=src/pi.ts durable=src/durable.ts generate-schema=scripts/generate-schema.ts --bundle --splitting --format=esm --platform=node --target=node22 --packages=external --outdir=dist && node dist/generate-schema.js && biome format --write src/config.schema.json >&2 && rm dist/generate-schema.js && tsc --project tsconfig.build.json && cp src/config.schema.json dist/config.schema.json && chmod +x dist/cli.js",
     "prepare": "npm run build",
     "prepack": "npm run build",
     "check": "tsc --noEmit",
@@ -103,20 +107,26 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.4",
-    "@earendil-works/pi-ai": "^0.99.0",
-    "@earendil-works/pi-coding-agent": "^0.99.0",
-    "@earendil-works/pi-tui": "^0.99.0",
+    "@earendil-works/chord": "^1.0.0",
+    "@earendil-works/pi-ai": "^1.0.0",
+    "@earendil-works/pi-coding-agent": "^1.0.0",
+    "@earendil-works/pi-durable": "^1.0.0",
+    "@earendil-works/pi-tui": "^1.0.0",
     "@types/node": "^26.1.1",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   },
   "peerDependencies": {
+    "@earendil-works/pi-durable": "^1.0.0",
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
   "peerDependenciesMeta": {
+    "@earendil-works/pi-durable": {
+      "optional": true
+    },
     "@earendil-works/pi-coding-agent": {
       "optional": true
     },

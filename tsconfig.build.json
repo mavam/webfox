@@ -7,5 +7,5 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/index.ts", "src/pi.ts"]
+  "include": ["src/index.ts", "src/pi.ts", "src/durable.ts"]
 }
