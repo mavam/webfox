@@ -1,0 +1,9 @@
+created: 2026-10-03
+title: Pi Durable web tools
+intro: >-
+  Use your configured web tools in Pi Durable while keeping normal Pi, library, and
+  command-line workflows. This release also groups normal Pi's web tools for codemode
+  discovery.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.6.0
