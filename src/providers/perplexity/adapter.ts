@@ -217,7 +217,7 @@ function createClient(config: Perplexity): PerplexityClient {
 function shouldSendIntegrationHeader(baseUrl: string | undefined): boolean {
   const customHeaders = process.env.PERPLEXITY_CUSTOM_HEADERS ?? "";
   if (/^\s*x-pplx-integration\s*:/im.test(customHeaders)) return false;
-  const url = baseUrl ?? process.env.PERPLEXITY_BASE_URL;
+  const url = baseUrl ?? process.env.PERPLEXITY_BASE_URL?.trim();
   if (!url) return true;
   try {
     return new URL(url).hostname === "api.perplexity.ai";
