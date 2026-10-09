@@ -1,0 +1,9 @@
+created: 2026-10-09
+title: Perplexity integration attribution
+intro: >-
+  Webfox now identifies its requests to the public Perplexity API with a dedicated
+  integration header. Custom endpoints retain their existing SDK attribution, and
+  caller-supplied attribution remains unchanged.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.7.0
