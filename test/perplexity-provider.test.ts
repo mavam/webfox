@@ -28,6 +28,7 @@ import { providerHarness } from "./provider-harness.js";
 
 afterEach(() => {
   delete process.env.PERPLEXITY_API_KEY;
+  delete process.env.PERPLEXITY_CUSTOM_HEADERS;
   searchCreateMock.mockReset();
   chatCreateMock.mockReset();
   perplexityCtorMock.mockClear();
@@ -69,6 +70,7 @@ describe("Perplexity provider", () => {
       maxRetries: 0,
       apiKey: "test-key",
       baseURL: undefined,
+      defaultHeaders: { "X-Pplx-Integration": "webfox" },
     });
     expect(searchCreateMock).toHaveBeenCalledWith(
       {
@@ -231,5 +233,51 @@ describe("Perplexity provider", () => {
       "Answer with citations fallback\n\nSources:\n1. https://example.com/fallback\n   https://example.com/fallback",
     );
     expect(response.itemCount).toBe(1);
+  });
+
+  it.each([
+    ["https://api.perplexity.ai", true],
+    ["https://api.perplexity.ai/", true],
+    ["http://127.0.0.1:8080", false],
+    ["https://api.perplexity.ai.example.com", false],
+    ["https://proxy.example.com/api.perplexity.ai", false],
+  ])(
+    "sets the integration header only for the Perplexity API host (%s)",
+    async (baseUrl, expected) => {
+      searchCreateMock.mockResolvedValue({ results: [] });
+
+      const provider = providerHarness(perplexityProvider);
+      await provider.search(
+        "q",
+        1,
+        { baseUrl, credentials: { api: "test-key" } },
+        { cwd: process.cwd() },
+        {},
+      );
+
+      const options = perplexityCtorMock.mock.calls[0]?.[0];
+      expect(options.baseURL).toBe(baseUrl);
+      expect(options.defaultHeaders).toEqual(
+        expected ? { "X-Pplx-Integration": "webfox" } : undefined,
+      );
+    },
+  );
+
+  it("keeps a caller-supplied integration header from PERPLEXITY_CUSTOM_HEADERS", async () => {
+    process.env.PERPLEXITY_CUSTOM_HEADERS = "x-pplx-integration: my-app";
+    searchCreateMock.mockResolvedValue({ results: [] });
+
+    const provider = providerHarness(perplexityProvider);
+    await provider.search(
+      "q",
+      1,
+      { credentials: { api: "test-key" } },
+      { cwd: process.cwd() },
+      {},
+    );
+
+    expect(
+      perplexityCtorMock.mock.calls[0]?.[0].defaultHeaders,
+    ).toBeUndefined();
   });
 });

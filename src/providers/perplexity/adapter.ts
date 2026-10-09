@@ -206,7 +206,24 @@ function createClient(config: Perplexity): PerplexityClient {
     maxRetries: 0,
     apiKey,
     baseURL: config.baseUrl,
+    ...(shouldSendIntegrationHeader(config.baseUrl)
+      ? { defaultHeaders: { "X-Pplx-Integration": "webfox" } }
+      : {}),
   });
+}
+
+// Identify webfox traffic to the public Perplexity API only, and never
+// override a caller-supplied value from PERPLEXITY_CUSTOM_HEADERS.
+function shouldSendIntegrationHeader(baseUrl: string | undefined): boolean {
+  const customHeaders = process.env.PERPLEXITY_CUSTOM_HEADERS ?? "";
+  if (/^\s*x-pplx-integration\s*:/im.test(customHeaders)) return false;
+  const url = baseUrl ?? process.env.PERPLEXITY_BASE_URL?.trim();
+  if (!url) return true;
+  try {
+    return new URL(url).hostname === "api.perplexity.ai";
+  } catch {
+    return false;
+  }
 }
 
 function resolveModel(optionModel: unknown, fallbackModel: string): string {
