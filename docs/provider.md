@@ -160,8 +160,49 @@ web search --provider openai --help
 
 Supports search and page extraction. Set `PARALLEL_API_KEY`.
 
+Search defaults to `advanced`. Choose `fast` for interactive lookups, or see
+[Parallel's search modes](https://docs.parallel.ai/search/modes) for the available
+tradeoffs:
+
 ```sh
-web search "Node.js release notes" --provider parallel
+web search "Node.js release notes" --provider parallel --mode fast
+```
+
+Limit a query to particular sources with `advanced_settings.source_policy`.
+Use Webfox's `--max-results` to control the number of results:
+
+```sh
+web search "Node.js release notes" --provider parallel --mode fast --max-results 3 \
+  --options-json '{"advanced_settings":{"source_policy":{"include_domains":["nodejs.org"]}}}'
+```
+
+To reuse Fast mode, merge this into your [configuration](./reference.md#configuration):
+
+```yaml
+providers:
+  parallel:
+    options:
+      search:
+        mode: fast
+```
+
+Provider options don't select a provider. Continue to pass `--provider parallel`
+or use your saved Parallel search default. A request's `--mode` overrides the
+saved mode.
+
+For known URLs, use page extraction instead of another search. Parallel returns
+full page content by default:
+
+```sh
+web contents https://nodejs.org/en/about/previous-releases --provider parallel
+```
+
+To request only excerpts relevant to a question, disable full content and enable
+excerpts with an objective:
+
+```sh
+web contents https://nodejs.org/en/about/previous-releases --provider parallel \
+  --no-full-content --excerpts --objective "Which Node.js releases are supported?"
 ```
 
 ## Perplexity
