@@ -1,7 +1,7 @@
 import { orderedContents } from "../../contents.js";
 import { sleep, withSignal } from "../../runtime/lifecycle.js";
 
-import { Valyu as ValyuClient } from "valyu-js";
+import { type ContentResultSuccess, Valyu as ValyuClient } from "valyu-js";
 import type { ContentsResponse } from "../../contents.js";
 import { executeAsyncResearch } from "../../runtime/polling.js";
 import type {
@@ -102,22 +102,23 @@ const valyuImplementation = {
           };
         }
 
-        return result.status === "failed"
-          ? {
-              url,
-              error: result.error ?? formatJson(result),
-            }
-          : {
-              url: result.url,
-              ...(typeof result.content === "string" ||
-              typeof result.content === "number"
-                ? { content: String(result.content) }
-                : {}),
-              ...(result.summary !== undefined
-                ? { summary: result.summary }
-                : {}),
-              metadata: result as unknown as Record<string, unknown>,
-            };
+        if (result.status === "failed" || result.status === "not_found") {
+          return {
+            url,
+            error: result.error ?? formatJson(result),
+          };
+        }
+        // TypeScript cannot narrow a two-valued discriminant across both checks.
+        const page = result as ContentResultSuccess;
+        return {
+          url: page.url,
+          ...(typeof page.content === "string" ||
+          typeof page.content === "number"
+            ? { content: String(page.content) }
+            : {}),
+          ...(page.summary !== undefined ? { summary: page.summary } : {}),
+          metadata: page as unknown as Record<string, unknown>,
+        };
       }),
     };
   },

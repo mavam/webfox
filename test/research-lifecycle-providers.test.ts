@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const {
-  exaCtorMock,
-  exaSearchMock,
   openaiCtorMock,
   openaiResponsesCreateMock,
   openaiResponsesRetrieveMock,
@@ -10,22 +8,12 @@ const {
   valyuDeepResearchCreateMock,
   valyuDeepResearchStatusMock,
 } = vi.hoisted(() => ({
-  exaCtorMock: vi.fn(),
-  exaSearchMock: vi.fn(),
   openaiCtorMock: vi.fn(),
   openaiResponsesCreateMock: vi.fn(),
   openaiResponsesRetrieveMock: vi.fn(),
   valyuCtorMock: vi.fn(),
   valyuDeepResearchCreateMock: vi.fn(),
   valyuDeepResearchStatusMock: vi.fn(),
-}));
-
-vi.mock("exa-js", () => ({
-  Exa: exaCtorMock.mockImplementation(function MockExa() {
-    return {
-      search: exaSearchMock,
-    };
-  }),
 }));
 
 vi.mock("valyu-js", () => ({
@@ -56,11 +44,11 @@ vi.mock("openai", () => {
 });
 
 import { createWebfox, type WebfoxConfig } from "../src/index.js";
+import { stubFetch } from "./fetch-stub.js";
 
 afterEach(() => {
   vi.useRealTimers();
-  exaCtorMock.mockClear();
-  exaSearchMock.mockReset();
+  vi.unstubAllGlobals();
   openaiCtorMock.mockClear();
   openaiResponsesCreateMock.mockReset();
   openaiResponsesRetrieveMock.mockReset();
@@ -264,10 +252,10 @@ describe("OpenAI provider", () => {
 
 describe("async research providers", () => {
   it("uses Exa deep-reasoning search to synthesize research", async () => {
-    exaSearchMock.mockResolvedValue({
+    const calls = stubFetch(() => ({
       output: { content: "Exa research result" },
       results: [],
-    });
+    }));
 
     const promise = createWebfox({
       config: {
@@ -286,15 +274,17 @@ describe("async research providers", () => {
 
     const result = await promise;
 
-    expect(exaCtorMock).toHaveBeenCalledWith("literal-key", undefined);
-    expect(exaSearchMock).toHaveBeenCalledTimes(1);
-    expect(exaSearchMock).toHaveBeenCalledWith(
-      "Investigate Exa research polling",
-      {
-        type: "deep-reasoning",
-        outputSchema: { type: "text", description: expect.any(String) },
-      },
-    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      url: "https://api.exa.ai/search",
+      headers: { "x-api-key": "literal-key" },
+    });
+    expect(calls[0]?.body).toEqual({
+      query: "Investigate Exa research polling",
+      type: "deep-reasoning",
+      outputSchema: { type: "text", description: expect.any(String) },
+      contents: { text: { maxCharacters: 10_000 } },
+    });
     expect(successful(result.results[0])?.text).toBe("Exa research result");
   });
 

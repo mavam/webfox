@@ -1,9 +1,5 @@
-import { asWebfoxError, httpError, WebfoxError } from "../../errors.js";
+import { asWebfoxError, WebfoxError } from "../../errors.js";
 import { orderedContents } from "../../contents.js";
-import FirecrawlClient, {
-  type Document,
-  type SearchData,
-} from "@mendable/firecrawl-js";
 import type { ContentsResponse } from "../../contents.js";
 import type {
   ProviderContext,
@@ -13,7 +9,19 @@ import type {
 } from "../contract.js";
 import type { Firecrawl } from "./types.js";
 
-import { formatJson, trimSnippet } from "../shared.js";
+import { formatJson, joinUrl, requestJson, trimSnippet } from "../shared.js";
+
+type FirecrawlDocument = {
+  markdown?: unknown;
+  html?: unknown;
+  rawHtml?: unknown;
+  json?: unknown;
+  metadata?: unknown;
+};
+
+type FirecrawlSearchData = Partial<
+  Record<"web" | "news" | "images", unknown[]>
+>;
 
 const FIRECRAWL_CLOUD_HOST = "api.firecrawl.dev";
 const FIRECRAWL_DEFAULT_API_URL = "https://api.firecrawl.dev";
@@ -26,36 +34,41 @@ const firecrawlImplementation = {
     query: string,
     maxResults: number,
     config: Firecrawl,
-    _context: ProviderContext,
+    context: ProviderContext,
     options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
-    const client = createClient(config);
-
-    const response = await client.search(query, {
-      ...(options ?? {}),
-      limit: maxResults,
-    });
+    if (!query.trim()) {
+      throw new Error("Query cannot be empty");
+    }
+    const response = await firecrawlRequest(
+      config,
+      "/v2/search",
+      { ...(options ?? {}), query, limit: maxResults },
+      context.signal,
+      "Firecrawl search failed.",
+    );
 
     return {
       provider: "firecrawl",
-      results: flattenSearchResults(response).slice(0, maxResults),
+      results: flattenSearchResults(
+        (asRecord(response.data) ?? {}) as FirecrawlSearchData,
+      ).slice(0, maxResults),
     };
   },
 
   async contents(
     urls: string[],
     config: Firecrawl,
-    _context: ProviderContext,
+    context: ProviderContext,
     options?: Record<string, unknown>,
   ): Promise<ContentsResponse> {
-    const client = createClient(config);
-
+    // `autoResume` is an SDK-side retry loop, not an API field.
+    const { autoResume: _autoResume, ...callOptions } = options ?? {};
     const scrapeOptions = {
       formats: ["markdown"],
       onlyMainContent: true,
 
-      ...(options ?? {}),
-      autoResume: false,
+      ...callOptions,
     };
 
     return {
@@ -63,13 +76,21 @@ const firecrawlImplementation = {
       answers: await Promise.all(
         urls.map(async (url) => {
           try {
-            const document = await client.scrape(url, scrapeOptions as never);
+            const response = await firecrawlRequest(
+              config,
+              "/v2/scrape",
+              { ...scrapeOptions, url: url.trim() },
+              context.signal,
+              "Firecrawl scrape failed.",
+            );
+            const document = (asRecord(response.data) ??
+              {}) as FirecrawlDocument;
             const content = getDocumentContent(document);
             return content
               ? {
                   url,
                   content,
-                  ...(document.metadata
+                  ...(asRecord(document.metadata)
                     ? {
                         metadata: document.metadata as Record<string, unknown>,
                       }
@@ -133,24 +154,6 @@ const firecrawlImplementation = {
   },
 };
 
-function createClient(config: Firecrawl): FirecrawlClient {
-  const apiUrl = config.baseUrl;
-  const apiKey = config.credentials?.api;
-  if (isFirecrawlCloudApiUrl(apiUrl) && !apiKey) {
-    throw new WebfoxError(
-      "PROVIDER_UNAVAILABLE",
-      "Firecrawl cloud requires FIRECRAWL_API_KEY; self-hosted instances can use baseUrl without a key.",
-    );
-  }
-
-  return new FirecrawlClient({
-    // Firecrawl counts attempts, unlike SDKs whose maxRetries excludes the first call.
-    maxRetries: 1,
-    apiKey,
-    apiUrl,
-  });
-}
-
 function isFirecrawlCloudApiUrl(apiUrl: string | undefined): boolean {
   return !apiUrl || apiUrl.includes(FIRECRAWL_CLOUD_HOST);
 }
@@ -189,6 +192,27 @@ async function scrapeQuestion(
   options: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<unknown> {
+  return await firecrawlRequest(
+    config,
+    "/v2/scrape",
+    {
+      ...options,
+      url,
+      formats: [{ type: "question", question }],
+    },
+    signal,
+    "Firecrawl scrape failed.",
+  );
+}
+
+/** One Firecrawl API call; the runtime owns retries and cancellation. */
+async function firecrawlRequest(
+  config: Firecrawl,
+  path: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal | undefined,
+  failure: string,
+): Promise<Record<string, unknown>> {
   const apiUrl = config.baseUrl ?? FIRECRAWL_DEFAULT_API_URL;
   const apiKey = config.credentials?.api;
   if (isFirecrawlCloudApiUrl(apiUrl) && !apiKey) {
@@ -198,49 +222,31 @@ async function scrapeQuestion(
     );
   }
 
-  const response = await fetch(joinUrl(apiUrl, "/v2/scrape"), {
-    signal,
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+  const payload = await requestJson(
+    joinUrl(apiUrl, path),
+    {
+      // Omit Authorization without a key: Firecrawl grants keyless access
+      // only when the header is absent.
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      body,
+      signal,
     },
-    body: JSON.stringify({
-      ...options,
-      url,
-      formats: [{ type: "question", question }],
-    }),
-  });
-
-  const payload = await readJsonResponse(response);
-  if (!response.ok) {
-    throw httpError(response, readFirecrawlError(payload, response.statusText));
-  }
+    (value, response) =>
+      readFirecrawlError(value, response.statusText || failure),
+  );
   if (isFirecrawlFailure(payload)) {
-    throw new Error(readFirecrawlError(payload, "Firecrawl scrape failed."));
+    throw new Error(readFirecrawlError(payload, failure));
   }
-  return payload;
+  const record = asRecord(payload);
+  if (!record) {
+    throw new Error(`Unexpected Firecrawl response: ${formatJson(payload)}`);
+  }
+  return record;
 }
 
-function joinUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/+$/g, "")}/${path.replace(/^\/+/g, "")}`;
-}
-
-async function readJsonResponse(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) {
-    return {};
-  }
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
-}
-
+/** Firecrawl wraps every v2 result in `{ success: true, data }`. */
 function isFirecrawlFailure(value: unknown): boolean {
-  const record = asRecord(value);
-  return record?.success === false || record?.error !== undefined;
+  return asRecord(value)?.success !== true;
 }
 
 function readFirecrawlError(value: unknown, fallback: string): string {
@@ -265,10 +271,16 @@ function getFirecrawlDocument(value: unknown): Record<string, unknown> {
   throw new Error(`Unexpected Firecrawl response: ${formatJson(value)}`);
 }
 
-function flattenSearchResults(response: SearchData): SearchResult[] {
+function flattenSearchResults(response: FirecrawlSearchData): SearchResult[] {
   return (["web", "news", "images"] as const).flatMap((source) =>
     (response[source] ?? [])
-      .map((entry) => toSearchResult(source, entry))
+      // Firecrawl may return bare URL strings instead of result objects.
+      .map((entry) =>
+        toSearchResult(
+          source,
+          typeof entry === "string" ? { url: entry } : entry,
+        ),
+      )
       .filter((entry): entry is SearchResult => entry !== null),
   );
 }
@@ -314,7 +326,7 @@ function toSearchResult(
   };
 }
 
-function getDocumentContent(document: Document): string | undefined {
+function getDocumentContent(document: FirecrawlDocument): string | undefined {
   if (typeof document.markdown === "string" && document.markdown.trim()) {
     return document.markdown;
   }

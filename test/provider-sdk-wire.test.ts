@@ -139,7 +139,7 @@ it("forwards You.com's POST search controls through its HTTP adapter", async () 
   ]);
 });
 
-it("forwards Firecrawl's distinct search and scrape location shapes through its SDK", async () => {
+it("forwards Firecrawl's distinct search and scrape location shapes through its HTTP adapter", async () => {
   response = { success: true, data: { web: [] } };
   const options = {
     location: "Berlin, Germany",

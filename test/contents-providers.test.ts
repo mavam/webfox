@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { providerHarness } from "./provider-harness.js";
+import { stubFetch } from "./fetch-stub.js";
 
 const {
   cloudflareCtorMock,
   cloudflareMarkdownCreateMock,
-  exaCtorMock,
-  exaGetContentsMock,
   parallelCtorMock,
   parallelExtractMock,
   parallelSearchMock,
@@ -15,8 +14,6 @@ const {
 } = vi.hoisted(() => ({
   cloudflareCtorMock: vi.fn(),
   cloudflareMarkdownCreateMock: vi.fn(),
-  exaCtorMock: vi.fn(),
-  exaGetContentsMock: vi.fn(),
   parallelCtorMock: vi.fn(),
   parallelExtractMock: vi.fn(),
   parallelSearchMock: vi.fn(),
@@ -32,20 +29,6 @@ vi.mock("cloudflare", () => ({
         markdown: {
           create: cloudflareMarkdownCreateMock,
         },
-      },
-    };
-  }),
-}));
-
-vi.mock("exa-js", () => ({
-  Exa: exaCtorMock.mockImplementation(function MockExa() {
-    return {
-      search: vi.fn(),
-      getContents: exaGetContentsMock,
-      answer: vi.fn(),
-      research: {
-        create: vi.fn(),
-        get: vi.fn(),
       },
     };
   }),
@@ -76,6 +59,7 @@ vi.mock("valyu-js", () => ({
 }));
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   cloudflareCtorMock.mockClear();
   cloudflareMarkdownCreateMock.mockReset();
   parallelCtorMock.mockClear();
@@ -137,7 +121,7 @@ describe("contents providers", () => {
     const provider = providerHarness(exaProvider);
     const longParagraph = "x".repeat(420);
 
-    exaGetContentsMock.mockResolvedValue({
+    const calls = stubFetch(() => ({
       results: [
         {
           title: "Example",
@@ -146,7 +130,7 @@ describe("contents providers", () => {
           summary: "short summary",
         },
       ],
-    });
+    }));
 
     const result = await provider.contents(
       ["https://example.com"],
@@ -157,6 +141,13 @@ describe("contents providers", () => {
       undefined,
     );
 
+    expect(calls).toEqual([
+      expect.objectContaining({
+        url: "https://api.exa.ai/contents",
+        headers: expect.objectContaining({ "x-api-key": "literal-key" }),
+        body: { urls: ["https://example.com"] },
+      }),
+    ]);
     expect(result.answers).toHaveLength(1);
     expect(result.answers[0]).toMatchObject({
       url: "https://example.com",
@@ -169,6 +160,38 @@ describe("contents providers", () => {
         summary: "short summary",
       },
     });
+  });
+
+  it("reports Valyu not_found pages as per-URL errors", async () => {
+    const { valyuProvider } = await import(
+      "../src/providers/valyu/definition.js"
+    );
+    const provider = providerHarness(valyuProvider);
+
+    valyuContentsMock.mockResolvedValue({
+      success: true,
+      results: [
+        {
+          url: "https://valyu.ai/missing",
+          status: "not_found",
+          error: "Page not found",
+        },
+      ],
+    });
+
+    const result = await provider.contents(
+      ["https://valyu.ai/missing"],
+      { credentials: { api: "literal-key" } },
+      { cwd: process.cwd() },
+      undefined,
+    );
+
+    expect(result.answers).toMatchObject([
+      {
+        url: "https://valyu.ai/missing",
+        error: { code: "PROVIDER_FAILURE", message: "Page not found" },
+      },
+    ]);
   });
 
   it("prefers Valyu content over summaries and preserves line breaks", async () => {

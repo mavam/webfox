@@ -58,7 +58,7 @@ function client() {
 const cutoff = "2026-07-01T00:00:00Z";
 
 it.each(["auto", "fast", "instant"])(
-  "forwards snapshot search with type %s through the real Exa SDK",
+  "forwards snapshot search with type %s through the Exa API adapter",
   async (type) => {
     const result = await client().search({
       provider: "exa",
@@ -157,7 +157,7 @@ it("exposes snapshot options and restrictions in model-facing metadata", () => {
 });
 
 it.each([-1, 0, 24, 720])(
-  "forwards nested freshness %i through the real Exa SDK",
+  "forwards nested freshness %i through the Exa API adapter",
   async (maxAgeHours) => {
     const result = await client().search({
       provider: "exa",

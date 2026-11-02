@@ -1,10 +1,8 @@
 import { expect, it } from "vitest";
-import type { SearchRequest, ScrapeOptions } from "@mendable/firecrawl-js";
 import type { TavilySearchOptions, TavilyExtractOptions } from "@tavily/core";
 import type { SearchParams } from "parallel-web/resources/top-level";
 import type { MarkdownCreateParams } from "cloudflare/resources/browser-rendering/markdown";
 import type { CompletionCreateParams } from "@perplexity-ai/perplexity_ai/resources/chat/completions";
-import type { FetchParams } from "linkup-sdk";
 import type { DeepResearchTools } from "valyu-js";
 import type { Capability, ProviderId } from "../src/domain.js";
 import { providers } from "../src/providers/registry.js";
@@ -38,7 +36,7 @@ const samples: Array<{
         location: { country: "DE", languages: ["de"] },
         waitFor: 100,
       },
-    } satisfies Omit<SearchRequest, "query">,
+    },
   },
   {
     provider: "firecrawl",
@@ -46,7 +44,7 @@ const samples: Array<{
     options: {
       location: { country: "US", languages: ["en"] },
       redactPII: { mode: "fast", entities: ["EMAIL"] },
-    } satisfies ScrapeOptions,
+    },
   },
   {
     provider: "tavily",
@@ -107,7 +105,7 @@ const samples: Array<{
       mode: "pro",
       includeRawContent: true,
       extractImages: true,
-    } satisfies Omit<FetchParams, "url">,
+    },
   },
   {
     provider: "valyu",
