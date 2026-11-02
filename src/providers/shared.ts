@@ -1,4 +1,4 @@
-import { httpError } from "../errors.js";
+import { httpError, WebfoxError } from "../errors.js";
 
 export function trimSnippet(
   input: string | undefined,
@@ -39,6 +39,24 @@ export async function readResponseBody(response: Response): Promise<unknown> {
   }
 }
 
+/** Reject successful responses whose body is empty or not JSON. */
+export function expectJsonBody(payload: unknown, response: Response): unknown {
+  if (payload === undefined) {
+    throw new WebfoxError(
+      "PROVIDER_FAILURE",
+      `Expected a JSON response but received an empty body (status ${response.status}).`,
+    );
+  }
+  if (typeof payload === "string") {
+    const snippet = payload.trim().replace(/\s+/g, " ").slice(0, 200);
+    throw new WebfoxError(
+      "PROVIDER_FAILURE",
+      `Expected a JSON response but received a non-JSON body (status ${response.status}): ${snippet}`,
+    );
+  }
+  return payload;
+}
+
 /**
  * Send one JSON request without retries; the runtime owns retry policy.
  * Non-2xx responses become classified provider errors with the message that
@@ -71,5 +89,5 @@ export async function requestJson(
   if (!response.ok) {
     throw httpError(response, describeError(payload, response));
   }
-  return payload;
+  return expectJsonBody(payload, response);
 }

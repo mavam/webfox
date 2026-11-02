@@ -16,6 +16,7 @@ import type { Linkup } from "./types.js";
 import {
   formatJson,
   joinUrl,
+  expectJsonBody,
   readResponseBody,
   trimSnippet,
 } from "../shared.js";
@@ -446,7 +447,7 @@ async function linkupRequest(
   if (!response.ok) {
     throw linkupError(response, payload);
   }
-  return payload;
+  return expectJsonBody(payload, response);
 }
 
 // Quota and budget exhaustion use 429 but cannot succeed on retry.

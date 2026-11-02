@@ -244,9 +244,9 @@ async function firecrawlRequest(
   return record;
 }
 
+/** Firecrawl wraps every v2 result in `{ success: true, data }`. */
 function isFirecrawlFailure(value: unknown): boolean {
-  const record = asRecord(value);
-  return record?.success === false || record?.error !== undefined;
+  return asRecord(value)?.success !== true;
 }
 
 function readFirecrawlError(value: unknown, fallback: string): string {
@@ -274,7 +274,13 @@ function getFirecrawlDocument(value: unknown): Record<string, unknown> {
 function flattenSearchResults(response: FirecrawlSearchData): SearchResult[] {
   return (["web", "news", "images"] as const).flatMap((source) =>
     (response[source] ?? [])
-      .map((entry) => toSearchResult(source, entry))
+      // Firecrawl may return bare URL strings instead of result objects.
+      .map((entry) =>
+        toSearchResult(
+          source,
+          typeof entry === "string" ? { url: entry } : entry,
+        ),
+      )
       .filter((entry): entry is SearchResult => entry !== null),
   );
 }
