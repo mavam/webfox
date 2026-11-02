@@ -16,7 +16,7 @@ buildNpmPackage {
 
   nodejs = nodejs_24;
   npmDepsFetcherVersion = 2;
-  npmDepsHash = "sha256-/Btgj+QEl6cYuDq6uGaYyT3Goj7CwfO9jv0hog9Jmro=";
+  npmDepsHash = "sha256-TEDPWJt6pVreNo2vg71JomzmrYdR2+FesKjlzo4eyT4=";
 
   # Root package versions do not affect dependencies. Normalize them in both
   # the fetcher and build so release bumps preserve the dependency cache hash.

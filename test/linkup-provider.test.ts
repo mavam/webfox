@@ -1,40 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const {
-  linkupCtorMock,
-  linkupFetchMock,
-  linkupGetResearchMock,
-  linkupResearchMock,
-  linkupSearchMock,
-} = vi.hoisted(() => ({
-  linkupCtorMock: vi.fn(),
-  linkupFetchMock: vi.fn(),
-  linkupGetResearchMock: vi.fn(),
-  linkupResearchMock: vi.fn(),
-  linkupSearchMock: vi.fn(),
-}));
-
-vi.mock("linkup-sdk", () => ({
-  LinkupClient: linkupCtorMock.mockImplementation(function MockLinkup() {
-    return {
-      search: linkupSearchMock,
-      fetch: linkupFetchMock,
-      research: linkupResearchMock,
-      getResearch: linkupGetResearchMock,
-    };
-  }),
-}));
-
 import { linkupProvider } from "../src/providers/linkup/definition.js";
 import { providerHarness } from "./provider-harness.js";
+import { jsonResponse, stubFetch } from "./fetch-stub.js";
 
 afterEach(() => {
   delete process.env.LINKUP_API_KEY;
-  linkupCtorMock.mockClear();
-  linkupSearchMock.mockReset();
-  linkupFetchMock.mockReset();
-  linkupResearchMock.mockReset();
-  linkupGetResearchMock.mockReset();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -42,7 +14,7 @@ describe("providerHarness(linkupProvider)", () => {
   it("forwards supported Linkup search options and keeps search-results output fixed", async () => {
     process.env.LINKUP_API_KEY = "test-key";
 
-    linkupSearchMock.mockResolvedValue({
+    const calls = stubFetch(() => ({
       results: [
         {
           type: "text",
@@ -57,7 +29,7 @@ describe("providerHarness(linkupProvider)", () => {
           url: "https://example.com/logo.png",
         },
       ],
-    });
+    }));
 
     const response = await providerHarness(linkupProvider).search(
       "linkup sdk",
@@ -81,25 +53,22 @@ describe("providerHarness(linkupProvider)", () => {
       },
     );
 
-    expect(linkupCtorMock).toHaveBeenCalledWith({
-      apiKey: "test-key",
-      baseUrl: "https://api.linkup.test/v1",
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      url: "https://api.linkup.test/v1/search",
+      method: "POST",
+      headers: { authorization: "Bearer test-key" },
     });
-    expect(linkupSearchMock).toHaveBeenCalledWith({
-      query: "linkup sdk",
+    expect(calls[0]?.body).toEqual({
+      q: "linkup sdk",
       depth: "deep",
       outputType: "searchResults",
       maxResults: 2,
       includeImages: true,
       includeDomains: ["docs.linkup.so"],
       excludeDomains: ["example.com"],
-      fromDate: expect.any(Date),
+      fromDate: "2026-01-02",
     });
-    expect(
-      (
-        linkupSearchMock.mock.calls[0]?.[0] as { fromDate: Date }
-      ).fromDate.toISOString(),
-    ).toBe("2026-01-02T03:04:05.000Z");
     expect(response).toEqual({
       provider: "linkup",
       results: [
@@ -141,14 +110,20 @@ describe("providerHarness(linkupProvider)", () => {
   });
 
   it("forwards Linkup fetch options per URL and preserves URL order", async () => {
-    linkupFetchMock.mockImplementation(async ({ url }: { url: string }) => {
-      if (url === "https://example.com/a") {
+    const calls = stubFetch(({ body }) => {
+      if (body.url === "https://example.com/a") {
         return {
           markdown: "# Page A\n\nBody A",
         };
       }
-      if (url === "https://example.com/b") {
-        throw new Error("blocked by robots");
+      if (body.url === "https://example.com/b") {
+        return jsonResponse(
+          {
+            statusCode: 400,
+            error: { code: "FETCH_ERROR", message: "blocked by robots" },
+          },
+          400,
+        );
       }
       return {
         markdown: "",
@@ -175,28 +150,19 @@ describe("providerHarness(linkupProvider)", () => {
       },
     );
 
-    expect(linkupCtorMock).toHaveBeenCalledWith({
-      apiKey: "literal-key",
-      baseUrl: undefined,
-    });
-    expect(linkupFetchMock).toHaveBeenNthCalledWith(1, {
-      url: "https://example.com/a",
-      renderJs: true,
-      includeRawHtml: true,
-      extractImages: true,
-    });
-    expect(linkupFetchMock).toHaveBeenNthCalledWith(2, {
-      url: "https://example.com/b",
-      renderJs: true,
-      includeRawHtml: true,
-      extractImages: true,
-    });
-    expect(linkupFetchMock).toHaveBeenNthCalledWith(3, {
-      url: "https://example.com/c",
-      renderJs: true,
-      includeRawHtml: true,
-      extractImages: true,
-    });
+    expect(calls.map(({ url }) => url)).toEqual([
+      "https://api.linkup.so/v1/fetch",
+      "https://api.linkup.so/v1/fetch",
+      "https://api.linkup.so/v1/fetch",
+    ]);
+    expect(calls.map(({ body }) => body)).toEqual(
+      ["a", "b", "c"].map((page) => ({
+        url: `https://example.com/${page}`,
+        renderJs: true,
+        includeRawHtml: true,
+        extractImages: true,
+      })),
+    );
     expect(response.answers).toMatchObject([
       {
         inputIndex: 0,
@@ -223,18 +189,14 @@ describe("providerHarness(linkupProvider)", () => {
     vi.useFakeTimers();
 
     process.env.LINKUP_API_KEY = "test-key";
-    linkupResearchMock.mockResolvedValue({
-      id: "linkup-research-1",
-      status: "pending",
-    });
-    linkupGetResearchMock
-      .mockResolvedValueOnce({
+    const polls = [
+      {
         id: "linkup-research-1",
         status: "processing",
         output: null,
         error: null,
-      })
-      .mockResolvedValueOnce({
+      },
+      {
         id: "linkup-research-1",
         status: "completed",
         output: {
@@ -249,7 +211,13 @@ describe("providerHarness(linkupProvider)", () => {
           ],
         },
         error: null,
-      });
+      },
+    ];
+    const calls = stubFetch(({ method }) =>
+      method === "POST"
+        ? { id: "linkup-research-1", status: "pending" }
+        : polls.shift(),
+    );
 
     const promise = providerHarness(linkupProvider).research(
       "Investigate Linkup research",
@@ -275,26 +243,20 @@ describe("providerHarness(linkupProvider)", () => {
     await vi.advanceTimersByTimeAsync(3000);
     const response = await promise;
 
-    expect(linkupResearchMock).toHaveBeenCalledTimes(1);
-    expect(linkupResearchMock).toHaveBeenCalledWith({
-      query: "Investigate Linkup research",
+    expect(calls.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      "POST https://api.linkup.test/v1/research",
+      "GET https://api.linkup.test/v1/research/linkup-research-1",
+      "GET https://api.linkup.test/v1/research/linkup-research-1",
+    ]);
+    expect(calls[0]?.body).toEqual({
+      q: "Investigate Linkup research",
       outputType: "sourcedAnswer",
       includeDomains: ["docs.linkup.so"],
       excludeDomains: ["example.net"],
-      fromDate: expect.any(Date),
+      fromDate: "2026-01-02",
       mode: "investigate",
       reasoningDepth: "L",
     });
-    expect(
-      (
-        linkupResearchMock.mock.calls[0]?.[0] as { fromDate: Date }
-      ).fromDate.toISOString(),
-    ).toBe("2026-01-02T03:04:05.000Z");
-    expect(linkupGetResearchMock).toHaveBeenCalledTimes(2);
-    expect(linkupGetResearchMock).toHaveBeenNthCalledWith(
-      1,
-      "linkup-research-1",
-    );
     expect(response).toEqual({
       provider: "linkup",
       text: "Linkup research result\n\nSources:\n1. Source A\n   https://example.com/a",
@@ -303,23 +265,23 @@ describe("providerHarness(linkupProvider)", () => {
   });
 
   it("infers structured Linkup research output from structuredOutputSchema", async () => {
-    linkupResearchMock.mockResolvedValue({
-      id: "linkup-research-structured",
-      status: "pending",
-    });
-    linkupGetResearchMock.mockResolvedValue({
-      id: "linkup-research-structured",
-      status: "completed",
-      output: {
-        companies: [
-          {
-            name: "Example Corp",
-            score: 0.9,
+    const calls = stubFetch(({ method }) =>
+      method === "POST"
+        ? { id: "linkup-research-structured", status: "pending" }
+        : {
+            id: "linkup-research-structured",
+            status: "completed",
+            output: {
+              companies: [
+                {
+                  name: "Example Corp",
+                  score: 0.9,
+                },
+              ],
+            },
+            error: null,
           },
-        ],
-      },
-      error: null,
-    });
+    );
 
     const response = await providerHarness(linkupProvider).research(
       "Find companies",
@@ -339,17 +301,17 @@ describe("providerHarness(linkupProvider)", () => {
       },
     );
 
-    expect(linkupResearchMock).toHaveBeenCalledWith({
-      query: "Find companies",
+    expect(calls[0]?.body).toEqual({
+      q: "Find companies",
       outputType: "structured",
-      structuredOutputSchema: {
+      structuredOutputSchema: JSON.stringify({
         type: "object",
         properties: {
           companies: {
             type: "array",
           },
         },
-      },
+      }),
     });
     expect(response).toEqual({
       provider: "linkup",
@@ -369,16 +331,16 @@ describe("providerHarness(linkupProvider)", () => {
   });
 
   it("maps failed Linkup research tasks to terminal research errors", async () => {
-    linkupResearchMock.mockResolvedValue({
-      id: "linkup-research-failed",
-      status: "pending",
-    });
-    linkupGetResearchMock.mockResolvedValue({
-      id: "linkup-research-failed",
-      status: "failed",
-      output: null,
-      error: "quota exceeded",
-    });
+    stubFetch(({ method }) =>
+      method === "POST"
+        ? { id: "linkup-research-failed", status: "pending" }
+        : {
+            id: "linkup-research-failed",
+            status: "failed",
+            output: null,
+            error: "quota exceeded",
+          },
+    );
 
     await expect(
       providerHarness(linkupProvider).research(

@@ -1,35 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { firecrawlCtorMock, firecrawlScrapeMock, firecrawlSearchMock } =
-  vi.hoisted(() => ({
-    firecrawlCtorMock: vi.fn(),
-    firecrawlScrapeMock: vi.fn(),
-    firecrawlSearchMock: vi.fn(),
-  }));
-
-vi.mock("@mendable/firecrawl-js", () => ({
-  default: firecrawlCtorMock.mockImplementation(function MockFirecrawl() {
-    return {
-      search: firecrawlSearchMock,
-      scrape: firecrawlScrapeMock,
-    };
-  }),
-}));
-
 import { firecrawlProvider } from "../src/providers/firecrawl/definition.js";
 import { providerHarness } from "./provider-harness.js";
+import { jsonResponse, stubFetch } from "./fetch-stub.js";
 
 afterEach(() => {
   delete process.env.FIRECRAWL_API_KEY;
-  firecrawlCtorMock.mockClear();
-  firecrawlSearchMock.mockReset();
-  firecrawlScrapeMock.mockReset();
   vi.unstubAllGlobals();
 });
 
 describe("providerHarness(firecrawlProvider)", () => {
   it("searches with a custom base URL without an API key", async () => {
-    firecrawlSearchMock.mockResolvedValue({ web: [] });
+    const calls = stubFetch(() => ({ success: true, data: { web: [] } }));
 
     const response = await providerHarness(firecrawlProvider).search(
       "firecrawl sdk",
@@ -40,53 +22,52 @@ describe("providerHarness(firecrawlProvider)", () => {
       { cwd: process.cwd() },
     );
 
-    expect(firecrawlCtorMock).toHaveBeenCalledWith({
-      maxRetries: 1,
-      apiKey: undefined,
-      apiUrl: "http://localhost:3002",
-    });
-    expect(firecrawlSearchMock).toHaveBeenCalledWith("firecrawl sdk", {
-      limit: 4,
-    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("http://localhost:3002/v2/search");
+    expect(calls[0]?.headers).not.toHaveProperty("authorization");
+    expect(calls[0]?.body).toEqual({ query: "firecrawl sdk", limit: 4 });
     expect(response.results).toEqual([]);
   });
 
   it("merges search options and maps results", async () => {
     process.env.FIRECRAWL_API_KEY = "test-key";
 
-    firecrawlSearchMock.mockResolvedValue({
-      web: [
-        {
-          title: "Firecrawl Docs",
-          url: "https://docs.firecrawl.dev",
-          description: "Official documentation",
-          category: "research",
-        },
-        {
-          markdown: "# Deep scrape\n\n" + "A".repeat(400),
-          metadata: {
-            title: "Scraped result",
-            sourceURL: "https://example.com/scraped",
-            description: "Structured scrape",
+    const calls = stubFetch(() => ({
+      success: true,
+      data: {
+        web: [
+          {
+            title: "Firecrawl Docs",
+            url: "https://docs.firecrawl.dev",
+            description: "Official documentation",
+            category: "research",
           },
-        },
-      ],
-      news: [
-        {
-          title: "Firecrawl launches feature",
-          url: "https://news.example.com/firecrawl",
-          snippet: "Launch coverage",
-          date: "2026-04-01",
-        },
-      ],
-      images: [
-        {
-          title: "Firecrawl logo",
-          imageUrl: "https://example.com/logo.png",
-          position: 1,
-        },
-      ],
-    });
+          {
+            markdown: "# Deep scrape\n\n" + "A".repeat(400),
+            metadata: {
+              title: "Scraped result",
+              sourceURL: "https://example.com/scraped",
+              description: "Structured scrape",
+            },
+          },
+        ],
+        news: [
+          {
+            title: "Firecrawl launches feature",
+            url: "https://news.example.com/firecrawl",
+            snippet: "Launch coverage",
+            date: "2026-04-01",
+          },
+        ],
+        images: [
+          {
+            title: "Firecrawl logo",
+            imageUrl: "https://example.com/logo.png",
+            position: 1,
+          },
+        ],
+      },
+    }));
 
     const response = await providerHarness(firecrawlProvider).search(
       "firecrawl sdk",
@@ -108,12 +89,14 @@ describe("providerHarness(firecrawlProvider)", () => {
       },
     );
 
-    expect(firecrawlCtorMock).toHaveBeenCalledWith({
-      maxRetries: 1,
-      apiKey: "test-key",
-      apiUrl: "https://api.firecrawl.test",
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      url: "https://api.firecrawl.test/v2/search",
+      method: "POST",
+      headers: { authorization: "Bearer test-key" },
     });
-    expect(firecrawlSearchMock).toHaveBeenCalledWith("firecrawl sdk", {
+    expect(calls[0]?.body).toEqual({
+      query: "firecrawl sdk",
       sources: ["web", "news"],
       timeout: 15,
       location: "us",
@@ -163,27 +146,36 @@ describe("providerHarness(firecrawlProvider)", () => {
   });
 
   it("preserves URL order for contents, merges scrape options, and surfaces per-URL failures", async () => {
-    firecrawlScrapeMock.mockImplementation(async (url: string) => {
+    const calls = stubFetch(({ body: { url } }) => {
       if (url === "https://example.com/a") {
         return {
-          markdown: "# Page A\n\nBody A",
-          metadata: {
-            title: "Page A",
-            sourceURL: "https://example.com/a?ref=firecrawl",
+          success: true,
+          data: {
+            markdown: "# Page A\n\nBody A",
+            metadata: {
+              title: "Page A",
+              sourceURL: "https://example.com/a?ref=firecrawl",
+            },
+            links: ["https://example.com/a/child"],
           },
-          links: ["https://example.com/a/child"],
         };
       }
       if (url === "https://example.com/b") {
-        throw new Error("blocked by robots");
+        return jsonResponse(
+          { success: false, error: "blocked by robots" },
+          403,
+        );
       }
       return {
-        json: {
-          title: "Page C",
-          items: [1, 2, 3],
-        },
-        metadata: {
-          title: "Page C",
+        success: true,
+        data: {
+          json: {
+            title: "Page C",
+            items: [1, 2, 3],
+          },
+          metadata: {
+            title: "Page C",
+          },
         },
       };
     });
@@ -208,43 +200,22 @@ describe("providerHarness(firecrawlProvider)", () => {
       },
     );
 
-    expect(firecrawlCtorMock).toHaveBeenCalledWith({
-      maxRetries: 1,
-      apiKey: "literal-key",
-      apiUrl: undefined,
-    });
-    expect(firecrawlScrapeMock).toHaveBeenNthCalledWith(
-      1,
-      "https://example.com/a",
-      {
-        autoResume: false,
-        formats: ["html"],
-        onlyMainContent: true,
-        waitFor: 500,
-        mobile: true,
-      },
+    expect(
+      calls.map(({ url, headers }) => [url, headers.authorization]),
+    ).toEqual(
+      Array(3).fill([
+        "https://api.firecrawl.dev/v2/scrape",
+        "Bearer literal-key",
+      ]),
     );
-    expect(firecrawlScrapeMock).toHaveBeenNthCalledWith(
-      2,
-      "https://example.com/b",
-      {
-        autoResume: false,
+    expect(calls.map(({ body }) => body)).toEqual(
+      ["a", "b", "c"].map((page) => ({
+        url: `https://example.com/${page}`,
         formats: ["html"],
         onlyMainContent: true,
         waitFor: 500,
         mobile: true,
-      },
-    );
-    expect(firecrawlScrapeMock).toHaveBeenNthCalledWith(
-      3,
-      "https://example.com/c",
-      {
-        autoResume: false,
-        formats: ["html"],
-        onlyMainContent: true,
-        waitFor: 500,
-        mobile: true,
-      },
+      })),
     );
     expect(response.answers).toMatchObject([
       {
@@ -281,21 +252,15 @@ describe("providerHarness(firecrawlProvider)", () => {
 
   it("answers a question about one URL using Firecrawl's question scrape format", async () => {
     process.env.FIRECRAWL_API_KEY = "test-key";
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          success: true,
-          data: {
-            answer: "The page says Firecrawl supports question scraping.",
-            metadata: {
-              title: "Firecrawl Docs",
-            },
-          },
-        }),
-        { status: 200 },
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    const calls = stubFetch(() => ({
+      success: true,
+      data: {
+        answer: "The page says Firecrawl supports question scraping.",
+        metadata: {
+          title: "Firecrawl Docs",
+        },
+      },
+    }));
 
     const response = await providerHarness(firecrawlProvider).answer(
       "What does the page say about question scraping?",
@@ -318,15 +283,16 @@ describe("providerHarness(firecrawlProvider)", () => {
       },
     );
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.firecrawl.dev/v2/scrape",
+    expect(calls).toEqual([
       {
+        url: "https://api.firecrawl.dev/v2/scrape",
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer test-key",
+          accept: "application/json",
+          "content-type": "application/json",
+          authorization: "Bearer test-key",
         },
-        body: JSON.stringify({
+        body: {
           onlyMainContent: false,
           waitFor: 250,
           mobile: true,
@@ -337,9 +303,9 @@ describe("providerHarness(firecrawlProvider)", () => {
               question: "What does the page say about question scraping?",
             },
           ],
-        }),
+        },
       },
-    );
+    ]);
     expect(response).toEqual({
       provider: "firecrawl",
       text: "The page says Firecrawl supports question scraping.",

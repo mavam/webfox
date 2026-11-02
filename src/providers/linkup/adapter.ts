@@ -1,15 +1,5 @@
-import { asWebfoxError } from "../../errors.js";
+import { asWebfoxError, WebfoxError } from "../../errors.js";
 import { orderedContents } from "../../contents.js";
-import {
-  type FetchParams,
-  LinkupClient,
-  type ResearchMode,
-  type ResearchParams,
-  type ResearchReasoningDepth,
-  type ResearchTask,
-  type SearchDepth,
-  type SearchParams,
-} from "linkup-sdk";
 
 import type { ContentsResponse } from "../../contents.js";
 import { executeAsyncResearch } from "../../runtime/polling.js";
@@ -23,7 +13,44 @@ import type {
 } from "../contract.js";
 import type { Linkup } from "./types.js";
 
-import { formatJson, trimSnippet } from "../shared.js";
+import {
+  formatJson,
+  joinUrl,
+  readResponseBody,
+  trimSnippet,
+} from "../shared.js";
+
+const DEFAULT_BASE_URL = "https://api.linkup.so/v1";
+
+type SearchDepth = "fast" | "standard" | "deep";
+type ResearchMode = string;
+type ResearchReasoningDepth = string;
+
+type FetchParams = {
+  url: string;
+  mode?: string;
+  includeRawContent?: boolean;
+  renderJs?: boolean;
+  includeRawHtml?: boolean;
+  extractImages?: boolean;
+};
+
+type FetchResponse = {
+  markdown?: string;
+  rawContent?: string;
+  rawHtml?: string;
+  contentType?: string;
+  images?: unknown;
+  favicon?: string;
+};
+
+type ResearchTask = {
+  id: string;
+  status: string;
+  input?: unknown;
+  output?: unknown;
+  error?: string;
+};
 
 type LinkupSearchOptions = {
   depth?: SearchDepth;
@@ -44,12 +71,29 @@ type LinkupFetchOptions = Omit<FetchParams, "url"> & {
   url?: string;
 };
 
-type ManagedLinkupSearchParams = Extract<
-  SearchParams,
-  { outputType: "searchResults" }
->;
+type ManagedLinkupSearchParams = {
+  q: string;
+  depth: SearchDepth;
+  outputType: "searchResults";
+  maxResults: number;
+  includeImages?: boolean;
+  includeDomains?: string[];
+  excludeDomains?: string[];
+  fromDate?: string;
+  toDate?: string;
+};
 
-type ManagedLinkupResearchParams = ResearchParams;
+type ManagedLinkupResearchParams = {
+  q: string;
+  outputType: "sourcedAnswer" | "structured";
+  includeDomains?: string[];
+  excludeDomains?: string[];
+  fromDate?: string;
+  toDate?: string;
+  mode?: ResearchMode;
+  reasoningDepth?: ResearchReasoningDepth;
+  structuredOutputSchema?: string;
+};
 
 type LinkupResearchOptions = {
   outputType?: "sourcedAnswer" | "structured";
@@ -70,16 +114,14 @@ const linkupImplementation = {
     query: string,
     maxResults: number,
     config: Linkup,
-    _context: ProviderContext,
+    context: ProviderContext,
     options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
-    const client = createClient(config);
-
-    const response = await client.search(
-      buildSearchParams(query, maxResults, {
+    const response = (await linkupRequest(config, context, "/search", {
+      body: buildSearchParams(query, maxResults, {
         ...(options ?? {}),
       }),
-    );
+    })) as { results?: unknown[] };
 
     return {
       provider: "linkup",
@@ -93,21 +135,19 @@ const linkupImplementation = {
   async contents(
     urls: string[],
     config: Linkup,
-    _context: ProviderContext,
+    context: ProviderContext,
     options?: Record<string, unknown>,
   ): Promise<ContentsResponse> {
-    const client = createClient(config);
-
     return {
       provider: "linkup",
       answers: await Promise.all(
         urls.map(async (url) => {
           try {
-            const response = await client.fetch(
-              buildFetchParams(url, {
+            const response = (await linkupRequest(config, context, "/fetch", {
+              body: buildFetchParams(url, {
                 ...(options ?? {}),
               }),
-            );
+            })) as FetchResponse;
 
             const metadata = Object.fromEntries(
               Object.entries(response).filter(
@@ -167,16 +207,14 @@ const linkupImplementation = {
   async startResearch(
     input: string,
     config: Linkup,
-    _context: ProviderContext,
+    context: ProviderContext,
     options?: Record<string, unknown>,
   ): Promise<ResearchJob> {
-    const client = createClient(config);
-
-    const task = await client.research(
-      buildResearchParams(input, {
+    const task = (await linkupRequest(config, context, "/research", {
+      body: buildResearchParams(input, {
         ...(options ?? {}),
       }),
-    );
+    })) as ResearchTask;
 
     return { id: task.id };
   },
@@ -184,10 +222,13 @@ const linkupImplementation = {
   async pollResearch(
     id: string,
     config: Linkup,
-    _context: ProviderContext,
+    context: ProviderContext,
   ): Promise<ResearchPollResult> {
-    const client = createClient(config);
-    const task = await client.getResearch(id);
+    const task = (await linkupRequest(
+      config,
+      context,
+      `/research/${encodeURIComponent(id)}`,
+    )) as ResearchTask;
 
     if (task.status === "completed") {
       return {
@@ -242,7 +283,7 @@ function buildSearchParams(
   }
 
   return {
-    query,
+    q: query,
     depth: searchOptions.depth ?? "standard",
     outputType: "searchResults",
     maxResults,
@@ -333,7 +374,7 @@ function buildResearchParams(
   }
 
   const commonParams = {
-    query: input,
+    q: input,
     ...(researchOptions.includeDomains !== undefined
       ? { includeDomains: researchOptions.includeDomains }
       : {}),
@@ -358,25 +399,80 @@ function buildResearchParams(
     return {
       ...commonParams,
       outputType,
-      structuredOutputSchema: researchOptions.structuredOutputSchema,
-    } as ManagedLinkupResearchParams;
+      structuredOutputSchema: serializeSchema(
+        researchOptions.structuredOutputSchema,
+      ),
+    };
   }
 
   return {
     ...commonParams,
     outputType,
-  } as ManagedLinkupResearchParams;
+  };
 }
 
-function createClient(config: Linkup): LinkupClient {
+function serializeSchema(schema: unknown): string {
+  return typeof schema === "string" ? schema : JSON.stringify(schema);
+}
+
+/** One Linkup API call; the runtime owns retries and cancellation. */
+async function linkupRequest(
+  config: Linkup,
+  context: ProviderContext,
+  path: string,
+  init: { body?: object } = {},
+): Promise<unknown> {
   const apiKey = config.credentials?.api;
   if (!apiKey) {
     throw new Error("is missing an API key");
   }
 
-  return new LinkupClient({
-    apiKey,
-    baseUrl: config.baseUrl,
+  const response = await fetch(
+    joinUrl(config.baseUrl ?? DEFAULT_BASE_URL, path),
+    {
+      method: init.body === undefined ? "GET" : "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        ...(init.body === undefined
+          ? {}
+          : { "Content-Type": "application/json" }),
+      },
+      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+      signal: context.signal,
+    },
+  );
+  const payload = await readResponseBody(response);
+  if (!response.ok) {
+    throw linkupError(response, payload);
+  }
+  return payload;
+}
+
+// Quota and budget exhaustion use 429 but cannot succeed on retry.
+const NON_RETRYABLE_CODES = new Set([
+  "INSUFFICIENT_FUNDS_CREDITS",
+  "EXCEED_BUDGET_LIMIT",
+]);
+
+function linkupError(response: Response, payload: unknown): WebfoxError {
+  const error = asRecord(asRecord(payload)?.error);
+  const code = readString(error?.code);
+  const details = Array.isArray(error?.details) ? error.details : [];
+  const message = [
+    readString(error?.message) ??
+      (typeof payload === "string" && payload.trim()
+        ? payload.trim().slice(0, 500)
+        : `Linkup request failed with status ${response.status}.`),
+    ...details.flatMap((detail) => {
+      const text = readString(asRecord(detail)?.message);
+      return text ? [text] : [];
+    }),
+  ].join(" ");
+  return new WebfoxError("PROVIDER_FAILURE", message, {
+    retryable:
+      [408, 429, 500, 502, 503, 504].includes(response.status) &&
+      !(code && NON_RETRYABLE_CODES.has(code)),
   });
 }
 
@@ -481,14 +577,15 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function toDate(value: string | number | Date, name: string): Date {
+/** Linkup filters by calendar day and expects YYYY-MM-DD. */
+function toDate(value: string | number | Date, name: string): string {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
     throw new Error(
       `Linkup option '${name}' must be a valid date string, timestamp, or Date.`,
     );
   }
-  return date;
+  return date.toISOString().slice(0, 10);
 }
 
 export const adapter = {
