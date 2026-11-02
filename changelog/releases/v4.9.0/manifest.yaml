@@ -1,0 +1,10 @@
+created: 2026-11-02
+title: Security dependency cleanup
+intro: >-
+  This release removes webfox's dependency on zod 3.x, clearing the high-severity
+  npm audit advisory GHSA-mrhx-c7xc-m3w5 reported in #59. The Exa, Firecrawl, and
+  Linkup providers now call their APIs directly, remaining provider SDKs are up to
+  date, and Valyu reports missing pages as errors.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.8.0
