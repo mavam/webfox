@@ -162,6 +162,38 @@ describe("contents providers", () => {
     });
   });
 
+  it("reports Valyu not_found pages as per-URL errors", async () => {
+    const { valyuProvider } = await import(
+      "../src/providers/valyu/definition.js"
+    );
+    const provider = providerHarness(valyuProvider);
+
+    valyuContentsMock.mockResolvedValue({
+      success: true,
+      results: [
+        {
+          url: "https://valyu.ai/missing",
+          status: "not_found",
+          error: "Page not found",
+        },
+      ],
+    });
+
+    const result = await provider.contents(
+      ["https://valyu.ai/missing"],
+      { credentials: { api: "literal-key" } },
+      { cwd: process.cwd() },
+      undefined,
+    );
+
+    expect(result.answers).toMatchObject([
+      {
+        url: "https://valyu.ai/missing",
+        error: { code: "PROVIDER_FAILURE", message: "Page not found" },
+      },
+    ]);
+  });
+
   it("prefers Valyu content over summaries and preserves line breaks", async () => {
     const { valyuProvider } = await import(
       "../src/providers/valyu/definition.js"
