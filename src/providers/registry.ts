@@ -4,6 +4,7 @@ import { customProvider } from "./custom/definition.js";
 import { exaProvider } from "./exa/definition.js";
 import { firecrawlProvider } from "./firecrawl/definition.js";
 import { geminiProvider } from "./gemini/definition.js";
+import { keenableProvider } from "./keenable/definition.js";
 import { linkupProvider } from "./linkup/definition.js";
 import { ollamaProvider } from "./ollama/definition.js";
 import { openaiProvider } from "./openai/definition.js";
@@ -22,6 +23,7 @@ export const providers = {
   exa: exaProvider,
   firecrawl: firecrawlProvider,
   gemini: geminiProvider,
+  keenable: keenableProvider,
   linkup: linkupProvider,
   ollama: ollamaProvider,
   openai: openaiProvider,

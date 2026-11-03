@@ -123,6 +123,23 @@ The research agent is fixed; answer model settings don't affect it.
 If you previously selected Gemini for search, choose a search-capable provider
 and remove `providers.gemini.options.search` from your configuration.
 
+## Keenable
+
+Supports search. Set `KEENABLE_API_KEY`, or configure
+`providers.keenable.credentials.api` with a credential source. No defaults change
+unless you select Keenable.
+
+```sh
+web search "Node.js release notes" --provider keenable \
+  --site nodejs.org --published-after 30d
+web config default search keenable
+```
+
+Keenable caps `maxResults` at 50. Native options include `mode` (`pro` or
+`realtime`), `site`, `published_after`/`published_before`,
+`acquired_after`/`acquired_before`, `query_time`, and `snippet_max_length`.
+Time filters accept dates, ISO 8601 timestamps, or relative deltas such as `7d`.
+
 ## Linkup
 
 Supports search, page extraction, and research. Set `LINKUP_API_KEY`.
