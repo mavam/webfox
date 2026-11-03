@@ -2252,6 +2252,60 @@
             "baseUrl": {
               "type": "string",
               "minLength": 1
+            },
+            "options": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "search": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": ["pro", "realtime"],
+                      "description": "Search mode: 'pro' (default) for deeper retrieval, 'realtime' for the fastest results. Each mode is billed separately."
+                    },
+                    "site": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Restrict results to one site, e.g. 'techcrunch.com'."
+                    },
+                    "published_after": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Only pages published at or after this time. Accepts YYYY-MM-DD, an ISO 8601 timestamp, or a relative delta such as 7d, 12h, or 30min."
+                    },
+                    "published_before": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Only pages published at or before this time. Accepts YYYY-MM-DD, an ISO 8601 timestamp, or a relative delta such as 7d, 12h, or 30min."
+                    },
+                    "acquired_after": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Only pages indexed at or after this time. Accepts YYYY-MM-DD, an ISO 8601 timestamp, or a relative delta such as 7d, 12h, or 30min."
+                    },
+                    "acquired_before": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Only pages indexed at or before this time. Accepts YYYY-MM-DD, an ISO 8601 timestamp, or a relative delta such as 7d, 12h, or 30min."
+                    },
+                    "query_time": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Search the index as it stood at this date or ISO 8601 timestamp; relative time filters resolve against it."
+                    },
+                    "snippet_max_length": {
+                      "type": "integer",
+                      "minimum": 180,
+                      "maximum": 10000,
+                      "description": "Maximum characters of the excerpt per result."
+                    }
+                  },
+                  "description": "Keenable search options.",
+                  "additionalProperties": false
+                }
+              }
             }
           }
         },

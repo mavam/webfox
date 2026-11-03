@@ -11,8 +11,11 @@ TypeScript library, and Pi `web_search` tool. Set `KEENABLE_API_KEY` or configur
 `providers.keenable.credentials.api`, then select it:
 
 ```sh
-web search "Node.js release notes" --provider keenable
+web search "Node.js release notes" --provider keenable --site nodejs.org
 web config default search keenable
 ```
+
+Keenable searches can filter by site and by publication or indexing time, and
+can trade retrieval depth for latency with `mode: "realtime"`.
 
 No defaults change unless you select Keenable.

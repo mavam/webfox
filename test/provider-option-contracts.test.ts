@@ -136,6 +136,18 @@ const samples: Array<{
       crawl_timeout: 10,
     },
   },
+  {
+    provider: "keenable",
+    capability: "search",
+    options: {
+      mode: "realtime",
+      site: "nodejs.org",
+      published_after: "7d",
+      acquired_before: "2026-01-15",
+      query_time: "2026-01-16T00:00:00Z",
+      snippet_max_length: 500,
+    },
+  },
 ];
 it.each(samples)(
   "accepts provider-native $provider $capability controls",
@@ -169,6 +181,8 @@ it.each([
   ["firecrawl", "search", { location: { country: "US" } }],
   ["firecrawl", "contents", { location: { city: "Boston" } }],
   ["tavily", "contents", { extractDepth: "deep" }],
+  ["keenable", "search", { mode: "invented" }],
+  ["keenable", "search", { snippet_max_length: 100 }],
   ["perplexity", "search", { search_mode: "invented" }],
   ["openai", "research", { userLocation: { country: "US" } }],
   ["valyu", "research", { tools: { browser_use: { arbitrarySetting: true } } }],

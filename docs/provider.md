@@ -130,9 +130,15 @@ Supports search. Set `KEENABLE_API_KEY`, or configure
 unless you select Keenable.
 
 ```sh
-web search "Node.js release notes" --provider keenable
+web search "Node.js release notes" --provider keenable \
+  --site nodejs.org --published-after 30d
 web config default search keenable
 ```
+
+Keenable caps `maxResults` at 50. Native options include `mode` (`pro` or
+`realtime`), `site`, `published_after`/`published_before`,
+`acquired_after`/`acquired_before`, `query_time`, and `snippet_max_length`.
+Time filters accept dates, ISO 8601 timestamps, or relative deltas such as `7d`.
 
 ## Linkup
 
