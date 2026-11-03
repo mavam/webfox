@@ -97,6 +97,7 @@ export interface ProviderConfigMap {
   exa: import("./exa/types.js").Exa;
   firecrawl: import("./firecrawl/types.js").Firecrawl;
   gemini: import("./gemini/types.js").Gemini;
+  keenable: import("./keenable/types.js").Keenable;
   linkup: import("./linkup/types.js").Linkup;
   ollama: import("./ollama/types.js").Ollama;
   openai: import("./openai/types.js").OpenAI;

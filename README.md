@@ -144,6 +144,7 @@ Use different providers for different tasks:
 | [Exa]        |   ✔︎    |    ✔︎     |   ✔︎    |    ✔︎     |
 | [Firecrawl]  |   ✔︎    |    ✔︎     |   ✔︎    |          |
 | [Gemini]     |        |          |   ✔︎    |    ✔︎     |
+| [Keenable]   |   ✔︎    |          |        |          |
 | [Linkup]     |   ✔︎    |    ✔︎     |        |    ✔︎     |
 | [Ollama]     |   ✔︎    |    ✔︎     |        |          |
 | [OpenAI]     |   ✔︎    |          |   ✔︎    |    ✔︎     |
@@ -161,6 +162,7 @@ Use different providers for different tasks:
 [Exa]: ./docs/provider.md#exa
 [Firecrawl]: ./docs/provider.md#firecrawl
 [Gemini]: ./docs/provider.md#gemini
+[Keenable]: ./docs/provider.md#keenable
 [Linkup]: ./docs/provider.md#linkup
 [Ollama]: ./docs/provider.md#ollama
 [OpenAI]: ./docs/provider.md#openai

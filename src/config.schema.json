@@ -23,6 +23,7 @@
                 "custom",
                 "exa",
                 "firecrawl",
+                "keenable",
                 "linkup",
                 "ollama",
                 "openai",
@@ -2194,6 +2195,63 @@
                   "description": "Gemini research options."
                 }
               }
+            }
+          }
+        },
+        "keenable": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "credentials": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "api": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "env": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["env"]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["value"]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "required": ["command"]
+                    }
+                  ]
+                }
+              }
+            },
+            "baseUrl": {
+              "type": "string",
+              "minLength": 1
             }
           }
         },

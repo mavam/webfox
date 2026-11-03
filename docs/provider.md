@@ -123,6 +123,17 @@ The research agent is fixed; answer model settings don't affect it.
 If you previously selected Gemini for search, choose a search-capable provider
 and remove `providers.gemini.options.search` from your configuration.
 
+## Keenable
+
+Supports search. Set `KEENABLE_API_KEY`, or configure
+`providers.keenable.credentials.api` with a credential source. No defaults change
+unless you select Keenable.
+
+```sh
+web search "Node.js release notes" --provider keenable
+web config default search keenable
+```
+
 ## Linkup
 
 Supports search, page extraction, and research. Set `LINKUP_API_KEY`.

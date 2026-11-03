@@ -12,6 +12,7 @@ export const PROVIDER_IDS = [
   "exa",
   "firecrawl",
   "gemini",
+  "keenable",
   "linkup",
   "ollama",
   "openai",
