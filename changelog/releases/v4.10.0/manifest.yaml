@@ -1,0 +1,8 @@
+created: 2026-11-03
+title: Keenable search provider
+intro: >-
+  Search with Keenable using site and time filters, or enable realtime mode for fresh
+  results.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.9.0
