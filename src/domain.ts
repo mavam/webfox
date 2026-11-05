@@ -20,6 +20,7 @@ export const PROVIDER_IDS = [
   "perplexity",
   "serpbase",
   "serper",
+  "sofya",
   "tavily",
   "valyu",
   "youcom",

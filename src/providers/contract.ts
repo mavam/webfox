@@ -105,6 +105,7 @@ export interface ProviderConfigMap {
   perplexity: import("./perplexity/types.js").Perplexity;
   serpbase: import("./serpbase/types.js").SerpBase;
   serper: import("./serper/types.js").Serper;
+  sofya: import("./sofya/types.js").Sofya;
   tavily: import("./tavily/types.js").Tavily;
   valyu: import("./valyu/types.js").Valyu;
   youcom: import("./youcom/types.js").Youcom;

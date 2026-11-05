@@ -31,6 +31,7 @@
                 "perplexity",
                 "serpbase",
                 "serper",
+                "sofya",
                 "tavily",
                 "valyu",
                 "youcom"
@@ -55,6 +56,7 @@
                 "linkup",
                 "ollama",
                 "parallel",
+                "sofya",
                 "tavily",
                 "valyu"
               ]
@@ -74,6 +76,7 @@
                 "gemini",
                 "openai",
                 "perplexity",
+                "sofya",
                 "valyu"
               ]
             }
@@ -92,6 +95,7 @@
                 "linkup",
                 "openai",
                 "perplexity",
+                "sofya",
                 "valyu"
               ]
             }
@@ -3780,6 +3784,182 @@
                     }
                   },
                   "description": "Serper search options.",
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "sofya": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "credentials": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "api": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "env": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["env"]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": ["value"]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "required": ["command"]
+                    }
+                  ]
+                }
+              }
+            },
+            "baseUrl": {
+              "type": "string",
+              "minLength": 1
+            },
+            "options": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "search": {
+                  "type": "object",
+                  "properties": {
+                    "search_depth": {
+                      "type": "string",
+                      "enum": ["snippets", "basic"],
+                      "description": "'snippets' (1 credit) returns search snippets; 'basic' (2 credits) also reads each page and returns its text in metadata.content."
+                    },
+                    "topic": {
+                      "type": "string",
+                      "enum": ["general", "news"],
+                      "description": "'news' for news articles, 'general' (default) for web search."
+                    },
+                    "freshness": {
+                      "type": "string",
+                      "pattern": "^(day|week|month|year|\\d{4}-\\d{2}-\\d{2}:\\d{4}-\\d{2}-\\d{2})$",
+                      "description": "Recency filter: day, week, month, year, or a YYYY-MM-DD:YYYY-MM-DD range."
+                    },
+                    "include_domains": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 10,
+                      "description": "Only return results from these domains, e.g. 'github.com'."
+                    },
+                    "exclude_domains": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 10,
+                      "description": "Exclude results from these domains."
+                    }
+                  },
+                  "description": "Sofya search options.",
+                  "additionalProperties": false
+                },
+                "contents": {
+                  "type": "object",
+                  "additionalProperties": false
+                },
+                "answer": {
+                  "type": "object",
+                  "properties": {
+                    "search_depth": {
+                      "type": "string",
+                      "enum": ["snippets", "basic"],
+                      "description": "'snippets' (1 credit) returns search snippets; 'basic' (2 credits) also reads each page and returns its text in metadata.content."
+                    },
+                    "max_results": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 20,
+                      "description": "Search results the answer is grounded in."
+                    },
+                    "topic": {
+                      "type": "string",
+                      "enum": ["general", "news"],
+                      "description": "'news' for news articles, 'general' (default) for web search."
+                    },
+                    "freshness": {
+                      "type": "string",
+                      "pattern": "^(day|week|month|year|\\d{4}-\\d{2}-\\d{2}:\\d{4}-\\d{2}-\\d{2})$",
+                      "description": "Recency filter: day, week, month, year, or a YYYY-MM-DD:YYYY-MM-DD range."
+                    },
+                    "include_domains": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 10,
+                      "description": "Only return results from these domains, e.g. 'github.com'."
+                    },
+                    "exclude_domains": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "maxItems": 10,
+                      "description": "Exclude results from these domains."
+                    }
+                  },
+                  "description": "Sofya answer options.",
+                  "additionalProperties": false
+                },
+                "research": {
+                  "type": "object",
+                  "properties": {
+                    "topic": {
+                      "type": "string",
+                      "enum": ["general", "news"],
+                      "description": "'news' for news articles, 'general' (default) for web search."
+                    },
+                    "freshness": {
+                      "type": "string",
+                      "pattern": "^(day|week|month|year|\\d{4}-\\d{2}-\\d{2}:\\d{4}-\\d{2}-\\d{2})$",
+                      "description": "Recency filter: day, week, month, year, or a YYYY-MM-DD:YYYY-MM-DD range."
+                    },
+                    "max_sources": {
+                      "type": "integer",
+                      "minimum": 5,
+                      "maximum": 30,
+                      "description": "Maximum sources to read (default 20)."
+                    }
+                  },
+                  "description": "Sofya research options.",
                   "additionalProperties": false
                 }
               }

@@ -340,6 +340,28 @@ Supports search. Set `SERPER_API_KEY`.
 web search "Node.js release notes" --provider serper
 ```
 
+## Sofya
+
+Supports search, page extraction, answers, and research. Set `SOFYA_API_KEY`,
+or configure `providers.sofya.credentials.api` with a credential source. No
+defaults change unless you select Sofya.
+
+```sh
+web search "Node.js release notes" --provider sofya --freshness month
+web contents https://nodejs.org/en/blog --provider sofya
+web answer "What is the latest Node.js LTS?" --provider sofya
+web research "State of WebAssembly outside the browser" --provider sofya
+web config default search sofya
+```
+
+Search caps `maxResults` at 20 and defaults to `search_depth: "snippets"`;
+`basic` also reads each page and returns its text in `metadata.content`. Native
+options include `topic` (`general` or `news`), `freshness` (`day`, `week`,
+`month`, `year`, or a `YYYY-MM-DD:YYYY-MM-DD` range), and
+`include_domains`/`exclude_domains`. Answers come from a search with
+`include_answer`, and research accepts `topic`, `freshness`, and `max_sources`
+(5-30). Research usually takes 20-60 seconds.
+
 ## You.com
 
 Supports search. Set `YDC_API_KEY`; the library, CLI, and Pi extension use the
