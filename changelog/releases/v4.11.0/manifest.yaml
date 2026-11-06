@@ -1,0 +1,9 @@
+created: 2026-11-06
+title: Sofya search and consistent results
+intro: >-
+  Webfox now supports Sofya as a search provider, contributed by @yusufgurdogan. Answer
+  and research output now handle empty results consistently and include structured
+  sources.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.10.0
