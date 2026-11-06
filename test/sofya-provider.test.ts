@@ -197,6 +197,61 @@ describe("Sofya", () => {
     ).rejects.toThrow(/invalid search response/);
   });
 
+  it("keeps empty answers and reports rewritten queries", async () => {
+    stubFetch(() =>
+      Response.json({
+        ...searchPayload,
+        answer: null,
+        relaxed_query: "node abort",
+        altered_query: null,
+      }),
+    );
+
+    const output = await adapter.answer(
+      { capability: "answer", query: "site:nodejs.org node abort" },
+      config,
+      providerContext,
+    );
+
+    expect(output.text).toMatch(/^No answer returned\.\n\nSources:/);
+    expect(output.metadata).toEqual({ relaxed_query: "node abort" });
+  });
+
+  it("forwards contents options and keeps empty pages", async () => {
+    const fetch = stubFetch(({ urls }) =>
+      Response.json({ results: [{ url: (urls as string[])[0] }] }),
+    );
+
+    const response = await adapter.contents(
+      {
+        capability: "contents",
+        urls: ["https://example.org/"],
+        options: { include_raw_html: true },
+      },
+      config,
+      providerContext,
+    );
+
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      include_raw_html: true,
+      urls: ["https://example.org/"],
+    });
+    expect(response.answers[0]).toMatchObject({
+      url: "https://example.org/",
+      content: "",
+    });
+  });
+
+  it("allows slow Sofya calls up to 90 seconds by default", async () => {
+    const { sofyaProvider } = await import(
+      "../src/providers/sofya/definition.js"
+    );
+    for (const capability of ["search", "contents", "answer"] as const)
+      expect(sofyaProvider.capabilities[capability]?.defaultTimeoutMs).toBe(
+        90_000,
+      );
+  });
+
   it("is registered and keyed by SOFYA_API_KEY", () => {
     const webfox = createWebfox({
       config: {},

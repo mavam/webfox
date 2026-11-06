@@ -359,8 +359,13 @@ Search caps `maxResults` at 20 and defaults to `search_depth: "snippets"`;
 options include `topic` (`general` or `news`), `freshness` (`day`, `week`,
 `month`, `year`, or a `YYYY-MM-DD:YYYY-MM-DD` range), and
 `include_domains`/`exclude_domains`. Answers come from a search with
-`include_answer`, and research accepts `topic`, `freshness`, and `max_sources`
-(5-30). Research usually takes 20-60 seconds.
+`include_answer` and report Sofya's `altered_query` or `relaxed_query` in
+metadata. Contents accepts `include_raw_html`. Research accepts `topic`,
+`freshness`, and `max_sources` (5-30) and usually takes 20-60 seconds.
+
+Sofya calls can take up to 60 seconds, so search, contents, and answers have a
+90-second overall deadline by default. An explicit CLI `--timeout`, library
+`timeoutMs`, or YAML `execution.timeoutMs` takes precedence.
 
 ## You.com
 

@@ -48,6 +48,7 @@ export const adapter = {
       request.urls.map(async (url) => {
         try {
           const payload = await sofyaRequest(config, context, "v1/fetch", {
+            ...asRecord(request.options),
             urls: [url],
           });
           const result = Array.isArray(payload.results)
@@ -98,7 +99,7 @@ export const adapter = {
     return withSources(
       text(payload.answer) ?? "No answer returned.",
       sources,
-      {},
+      queryMetadata(payload),
     );
   },
 
@@ -172,6 +173,18 @@ function withSources(
     itemCount: sources.length,
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
+}
+
+// Sofya reports spelling corrections and zero-result retries as the query it ran.
+function queryMetadata(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    ["altered_query", "relaxed_query"].flatMap((key) => {
+      const value = text(payload[key]);
+      return value ? [[key, value]] : [];
+    }),
+  );
 }
 
 function invalidResponse(endpoint: string): WebfoxError {

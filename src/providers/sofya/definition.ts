@@ -48,6 +48,8 @@ export const sofyaProvider = defineProvider({
   credentialDefaults: {},
   capabilities: {
     search: {
+      // Sofya calls can take up to 60 seconds; allow headroom.
+      defaultTimeoutMs: 90_000,
       options: {
         type: "object",
         properties: {
@@ -64,9 +66,21 @@ export const sofyaProvider = defineProvider({
       retrySafe: true,
     },
     contents: {
+      defaultTimeoutMs: 90_000,
+      options: {
+        type: "object",
+        properties: {
+          include_raw_html: {
+            type: "boolean",
+            description: "Include the raw HTML source in metadata.raw_html.",
+          },
+        },
+        description: "Sofya contents options.",
+      },
       retrySafe: true,
     },
     answer: {
+      defaultTimeoutMs: 90_000,
       options: {
         type: "object",
         properties: {

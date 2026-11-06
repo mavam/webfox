@@ -3891,6 +3891,13 @@
                 },
                 "contents": {
                   "type": "object",
+                  "properties": {
+                    "include_raw_html": {
+                      "type": "boolean",
+                      "description": "Include the raw HTML source in metadata.raw_html."
+                    }
+                  },
+                  "description": "Sofya contents options.",
                   "additionalProperties": false
                 },
                 "answer": {
