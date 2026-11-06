@@ -1,4 +1,4 @@
-import { orderedContents } from "../../contents.js";
+import { omittedContents, orderedContents } from "../../contents.js";
 import {
   type TavilyClient,
   type TavilyExtractResponse,
@@ -30,7 +30,7 @@ const tavilyImplementation = {
     return {
       provider: "tavily",
       results: response.results.slice(0, maxResults).map((result) => ({
-        title: result.title || result.url || "Untitled",
+        title: result.title,
         url: result.url || "",
         snippet: trimSnippet(result.content ?? result.rawContent),
         score: typeof result.score === "number" ? result.score : undefined,
@@ -88,10 +88,7 @@ const tavilyImplementation = {
           };
         }
 
-        return {
-          url,
-          error: "No content returned for this URL.",
-        };
+        return omittedContents(url);
       }),
     };
   },

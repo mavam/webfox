@@ -5,6 +5,7 @@ import type {
   ProviderRequest,
   SearchResponse,
   SearchResult,
+  SourceInput,
   ToolOutput,
 } from "../contract.js";
 import { joinUrl, requestJson, trimSnippet } from "../shared.js";
@@ -95,12 +96,9 @@ export const adapter = {
     });
     const sources = (Array.isArray(payload.results) ? payload.results : [])
       .map(toSearchResult)
-      .filter((result): result is SearchResult => result !== undefined);
-    return withSources(
-      text(payload.answer) ?? "No answer returned.",
-      sources,
-      queryMetadata(payload),
-    );
+      .filter((result): result is SearchResult => result !== undefined)
+      .map(({ title, url }) => ({ title, url }));
+    return output(payload.answer, sources, queryMetadata(payload));
   },
 
   async research(
@@ -113,16 +111,12 @@ export const adapter = {
       ...asRecord(request.options),
       query: request.input,
     });
-    const report = text(payload.report);
-    if (!report) throw invalidResponse("research");
     const sources = (Array.isArray(payload.sources) ? payload.sources : [])
       .map(asRecord)
-      .flatMap((source) => {
-        const url = text(source?.url);
-        return url ? [{ title: text(source?.title) ?? url, url }] : [];
-      });
-    return withSources(
-      report,
+      .filter((source) => source !== undefined)
+      .map((source) => ({ title: text(source.title), url: text(source.url) }));
+    return output(
+      payload.report,
       sources,
       Array.isArray(payload.sub_queries)
         ? { sub_queries: payload.sub_queries }
@@ -155,22 +149,15 @@ async function sofyaRequest(
   return payload;
 }
 
-function withSources(
-  body: string,
-  sources: Array<{ title: string; url: string }>,
+function output(
+  body: unknown,
+  sources: SourceInput[],
   metadata: Record<string, unknown>,
 ): ToolOutput {
-  const lines = [body];
-  if (sources.length > 0) {
-    lines.push("", "Sources:");
-    for (const [index, source] of sources.entries()) {
-      lines.push(`${index + 1}. ${source.title}`, `   ${source.url}`);
-    }
-  }
   return {
     provider: "sofya",
-    text: lines.join("\n").trimEnd(),
-    itemCount: sources.length,
+    text: typeof body === "string" ? body : "",
+    sources,
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
 }
@@ -222,7 +209,7 @@ function toSearchResult(entry: unknown): SearchResult | undefined {
   if (fetched === true && text(content)) metadata.content = content;
   const excerpt = text(description) ?? text(content);
   return {
-    title: text(title) ?? url,
+    title: text(title),
     url,
     snippet: excerpt ? trimSnippet(excerpt) : "",
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),

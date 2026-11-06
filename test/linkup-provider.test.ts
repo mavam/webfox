@@ -177,10 +177,6 @@ describe("providerHarness(linkupProvider)", () => {
       {
         inputIndex: 2,
         url: "https://example.com/c",
-        error: {
-          code: "PROVIDER_FAILURE",
-          message: "No content returned for this URL.",
-        },
       },
     ]);
   });
@@ -259,8 +255,37 @@ describe("providerHarness(linkupProvider)", () => {
     });
     expect(response).toEqual({
       provider: "linkup",
-      text: "Linkup research result\n\nSources:\n1. Source A\n   https://example.com/a",
-      itemCount: 1,
+      text: "Linkup research result",
+      sources: [{ url: "https://example.com/a", title: "Source A" }],
+    });
+  });
+
+  it("returns a sourced Linkup answer without text as an empty answer", async () => {
+    process.env.LINKUP_API_KEY = "test-key";
+    stubFetch(({ method }) =>
+      method === "POST"
+        ? { id: "linkup-research-empty", status: "pending" }
+        : {
+            id: "linkup-research-empty",
+            status: "completed",
+            output: {
+              answer: null,
+              sources: [{ name: "Source A", url: "https://example.com/a" }],
+            },
+            error: null,
+          },
+    );
+
+    const response = await providerHarness(linkupProvider).research(
+      "Investigate",
+      { credentials: { api: "test-key" } },
+      { cwd: process.cwd() },
+    );
+
+    expect(response).toEqual({
+      provider: "linkup",
+      text: "",
+      sources: [{ title: "Source A", url: "https://example.com/a" }],
     });
   });
 

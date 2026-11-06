@@ -9,10 +9,20 @@ export interface SearchResponse {
   results: SearchResult[];
 }
 
+/** A provider citation; the runtime trims fields and drops blank entries. */
+export interface SourceInput {
+  url?: string;
+  title?: string;
+}
+
+/**
+ * Answer and research output. Return the provider's text as-is, even when
+ * empty, and its citations as `sources`; presentation belongs to the renderer.
+ */
 export interface ToolOutput {
   provider: ProviderId;
   text: string;
-  itemCount?: number;
+  sources?: SourceInput[];
   metadata?: Record<string, unknown>;
 }
 

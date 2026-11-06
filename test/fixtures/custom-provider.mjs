@@ -69,7 +69,7 @@ switch (request.capability) {
     process.stdout.write(
       JSON.stringify({
         text: `Answer for ${request.input.query}`,
-        itemCount: 1,
+        sources: [{ url: "https://example.test/answer" }],
         metadata: {
           options: request.options,
           apiToken: "must-not-leak",

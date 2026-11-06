@@ -1,4 +1,4 @@
-import { orderedContents } from "../../contents.js";
+import { omittedContents, orderedContents } from "../../contents.js";
 import ParallelClient from "parallel-web";
 
 import type { ContentsResponse } from "../../contents.js";
@@ -83,10 +83,7 @@ const parallelImplementation = {
               url,
               error: formatJson(error),
             }
-          : {
-              url,
-              error: "No content returned for this URL.",
-            };
+          : omittedContents(url);
       }),
     };
   },

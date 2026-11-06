@@ -209,7 +209,7 @@ async function web(
         const x = obj(e);
         const u = str(x.url) ?? "";
         return {
-          title: str(x.title) || u || "Untitled",
+          title: str(x.title),
           url: u,
           snippet: trimSnippet(
             str(x.description) ?? arr(x.extra_snippets).join(" "),
@@ -268,11 +268,7 @@ async function llmContext(
         const source = obj(x.source);
         const u = str(x.url) ?? str(source.url) ?? "";
         return {
-          title:
-            str(x.title) ??
-            str(x.name) ??
-            str(source.title) ??
-            (u || "Untitled"),
+          title: str(x.title) ?? str(x.name) ?? str(source.title),
           url: u,
           snippet: trimSnippet(snippets.join("\n\n"), 1200),
           metadata: x,
@@ -335,7 +331,7 @@ async function news(
         const u = str(x.url) ?? "";
         const source = str(x.source) ?? str(x.source_name);
         return {
-          title: str(x.title) || u || "Untitled",
+          title: str(x.title),
           url: u,
           snippet: trimSnippet(
             [
@@ -389,7 +385,7 @@ async function videos(
         const u = str(x.url) ?? "";
         const video = obj(x.video);
         return {
-          title: str(x.title) || u || "Untitled",
+          title: str(x.title),
           url: u,
           snippet: trimSnippet(
             [
@@ -444,7 +440,7 @@ async function images(
         const page = str(x.url) ?? str(x.source) ?? str(props.url) ?? "";
         const image = str(props.url);
         return {
-          title: str(x.title) || page || "Untitled",
+          title: str(x.title),
           url: page || image || "",
           snippet: trimSnippet(
             [str(x.description), str(x.publisher), image]
@@ -515,7 +511,7 @@ async function places(
       const description = id ? descriptionsById.get(id) : undefined;
       const u = str(x.url) ?? str(x.provider_url) ?? "";
       return {
-        title: str(x.title) || u || "Untitled",
+        title: str(x.title),
         url: u,
         snippet: trimSnippet(
           [
@@ -714,19 +710,11 @@ async function completion(
   const text = await r.text();
   const parsed =
     body.stream === false ? parseAnswerJson(text) : parseAnswerStream(text);
-  const lines = [parsed.answer.trim() || text.trim()];
-  if (parsed.citations.length) {
-    lines.push("", "Sources:");
-    parsed.citations.forEach((c, i) => {
-      lines.push(`${i + 1}. ${c.title ?? c.url ?? "Source"}`);
-      if (c.url) lines.push(`   ${c.url}`);
-    });
-  }
   const metadata = buildAnswerMetadata(parsed);
   return {
     provider: "brave",
-    text: lines.join("\n").trimEnd(),
-    itemCount: parsed.citations.length,
+    text: parsed.answer,
+    sources: parsed.citations,
     ...(metadata ? { metadata } : {}),
   };
 }

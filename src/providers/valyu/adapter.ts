@@ -1,4 +1,4 @@
-import { orderedContents } from "../../contents.js";
+import { omittedContents, orderedContents } from "../../contents.js";
 import { sleep, withSignal } from "../../runtime/lifecycle.js";
 
 import { type ContentResultSuccess, Valyu as ValyuClient } from "valyu-js";
@@ -96,10 +96,7 @@ const valyuImplementation = {
             ? finalResponse.results[0]
             : undefined);
         if (!result) {
-          return {
-            url,
-            error: "No content returned for this URL.",
-          };
+          return omittedContents(url);
         }
 
         if (result.status === "failed" || result.status === "not_found") {
@@ -143,27 +140,15 @@ const valyuImplementation = {
       );
     }
 
-    const lines: string[] = [];
-    const contents =
-      typeof response.contents === "string"
-        ? response.contents
-        : formatJson(response.contents);
-    lines.push(contents);
-
-    const sources = response.search_results ?? [];
-    if (sources.length > 0) {
-      lines.push("");
-      lines.push("Sources:");
-      for (const [index, result] of sources.entries()) {
-        lines.push(`${index + 1}. ${result.title}`);
-        lines.push(`   ${result.url}`);
-      }
-    }
-
     return {
       provider: "valyu",
-      text: lines.join("\n").trimEnd(),
-      itemCount: sources.length,
+      text:
+        typeof response.contents === "string"
+          ? response.contents
+          : response.contents == null
+            ? ""
+            : formatJson(response.contents),
+      sources: response.search_results ?? [],
     };
   },
 
@@ -223,31 +208,17 @@ const valyuImplementation = {
     }
 
     if (result.status === "completed") {
-      const lines: string[] = [];
-      lines.push(
-        typeof result.output === "string"
-          ? result.output
-          : result.output
-            ? formatJson(result.output)
-            : "Valyu deep research completed without textual output.",
-      );
-
-      const sources = result.sources ?? [];
-      if (sources.length > 0) {
-        lines.push("");
-        lines.push("Sources:");
-        for (const [index, source] of sources.entries()) {
-          lines.push(`${index + 1}. ${source.title}`);
-          lines.push(`   ${source.url}`);
-        }
-      }
-
       return {
         status: "completed",
         output: {
           provider: "valyu",
-          text: lines.join("\n").trimEnd(),
-          itemCount: sources.length,
+          text:
+            typeof result.output === "string"
+              ? result.output
+              : result.output
+                ? formatJson(result.output)
+                : "",
+          sources: result.sources ?? [],
         },
       };
     }

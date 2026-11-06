@@ -3,6 +3,7 @@ import PerplexityClient from "@perplexity-ai/perplexity_ai";
 import type {
   ProviderContext,
   SearchResponse,
+  SourceInput,
   ToolOutput,
 } from "../contract.js";
 import type { Perplexity } from "./types.js";
@@ -73,7 +74,6 @@ const perplexityImplementation = {
       config,
       context,
       DEFAULT_ANSWER_MODEL,
-      "Answer",
       options,
     );
   },
@@ -89,7 +89,6 @@ const perplexityImplementation = {
       config,
       context,
       DEFAULT_RESEARCH_MODEL,
-      "Research",
       options,
     );
   },
@@ -100,7 +99,6 @@ async function runSilentForegroundChatTool(
   config: Perplexity,
   context: ProviderContext,
   fallbackModel: string,
-  label: "Answer" | "Research",
   options?: Record<string, unknown>,
 ): Promise<ToolOutput> {
   const client = createClient(config);
@@ -119,22 +117,10 @@ async function runSilentForegroundChatTool(
   const content = extractMessageText(response.choices[0]?.message?.content);
   const sources = dedupeSources(extractSources(response));
 
-  const lines: string[] = [];
-  lines.push(content || `No ${label.toLowerCase()} returned.`);
-
-  if (sources.length > 0) {
-    lines.push("");
-    lines.push("Sources:");
-    for (const [index, source] of sources.entries()) {
-      lines.push(`${index + 1}. ${source.title}`);
-      lines.push(`   ${source.url}`);
-    }
-  }
-
   return {
     provider: "perplexity",
-    text: lines.join("\n").trimEnd(),
-    itemCount: sources.length,
+    text: content,
+    sources,
   };
 }
 
@@ -143,7 +129,6 @@ async function runStreamingForegroundChatTool(
   config: Perplexity,
   context: ProviderContext,
   fallbackModel: string,
-  label: "Answer" | "Research",
   options?: Record<string, unknown>,
 ): Promise<ToolOutput> {
   const client = createClient(config);
@@ -162,7 +147,7 @@ async function runStreamingForegroundChatTool(
 
   let partialText = "";
   let lastChunk: PerplexityForegroundChunk | undefined;
-  const sources: Array<{ title: string; url: string }> = [];
+  const sources: SourceInput[] = [];
 
   for await (const chunk of stream) {
     lastChunk = chunk;
@@ -175,24 +160,12 @@ async function runStreamingForegroundChatTool(
 
   const finalText =
     partialText.trim() ||
-    extractMessageText(lastChunk?.choices?.[0]?.message?.content) ||
-    `No ${label.toLowerCase()} returned.`;
-  const dedupedSources = dedupeSources(sources);
-  const lines: string[] = [finalText];
-
-  if (dedupedSources.length > 0) {
-    lines.push("");
-    lines.push("Sources:");
-    for (const [index, source] of dedupedSources.entries()) {
-      lines.push(`${index + 1}. ${source.title}`);
-      lines.push(`   ${source.url}`);
-    }
-  }
+    extractMessageText(lastChunk?.choices?.[0]?.message?.content);
 
   return {
     provider: "perplexity",
-    text: lines.join("\n").trimEnd(),
-    itemCount: dedupedSources.length,
+    text: finalText,
+    sources: dedupeSources(sources),
   };
 }
 
@@ -287,37 +260,25 @@ function extractDeltaText(content: unknown): string {
     .join("");
 }
 
-function dedupeSources(
-  sources: Array<{ title: string; url: string }>,
-): Array<{ title: string; url: string }> {
+function dedupeSources(sources: SourceInput[]): SourceInput[] {
   const seen = new Set<string>();
-  const unique: Array<{ title: string; url: string }> = [];
-
-  for (const source of sources) {
-    const title = source.title.trim() || source.url.trim() || "Untitled";
-    const url = source.url.trim();
-    if (!url) continue;
-
-    const key = `${title.toLowerCase()}::${url.toLowerCase()}`;
-    if (seen.has(key)) continue;
+  return sources.filter((source) => {
+    const key = `${source.title?.trim().toLowerCase() ?? ""}::${source.url?.trim().toLowerCase()}`;
+    if (seen.has(key)) return false;
     seen.add(key);
-    unique.push({ title, url });
-  }
-
-  return unique;
+    return true;
+  });
 }
 
 function extractSources(
   response: Pick<PerplexityForegroundChunk, "search_results" | "citations">,
-): Array<{ title: string; url: string }> {
+): SourceInput[] {
   const searchResults =
-    response.search_results?.flatMap((result) => {
-      const url = result.url?.trim() ?? "";
-      if (!url) {
-        return [];
-      }
-      return [{ title: result.title?.trim() ?? url, url }];
-    }) ?? [];
+    response.search_results?.flatMap((result) =>
+      result.url?.trim()
+        ? [{ title: result.title ?? undefined, url: result.url }]
+        : [],
+    ) ?? [];
 
   if (searchResults.length > 0) {
     return searchResults;
@@ -325,8 +286,7 @@ function extractSources(
 
   return (
     response.citations?.flatMap((citation) => {
-      const url = citation?.trim() ?? "";
-      return url ? [{ title: url, url }] : [];
+      return citation?.trim() ? [{ url: citation }] : [];
     }) ?? []
   );
 }

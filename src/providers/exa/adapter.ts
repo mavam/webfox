@@ -1,4 +1,4 @@
-import { orderedContents } from "../../contents.js";
+import { omittedContents, orderedContents } from "../../contents.js";
 
 import type { ContentsResponse } from "../../contents.js";
 import { WebfoxError } from "../../errors.js";
@@ -46,7 +46,7 @@ const exaImplementation = {
     return {
       provider: "exa",
       results: (response.results ?? []).slice(0, maxResults).map((result) => ({
-        title: String(result.title ?? result.url ?? "Untitled"),
+        title: typeof result.title === "string" ? result.title : undefined,
         url: String(result.url ?? ""),
         snippet: trimSnippet(
           typeof result.text === "string"
@@ -82,10 +82,7 @@ const exaImplementation = {
       answers: urls.map((url, index) => {
         const result = results[index];
         if (!result) {
-          return {
-            url,
-            error: "No content returned for this URL.",
-          };
+          return omittedContents(url);
         }
 
         return {
@@ -119,29 +116,15 @@ const exaImplementation = {
       context,
     )) as ExaAnswerResponse;
 
-    const lines: string[] = [];
-    lines.push(
-      typeof response.answer === "string"
-        ? response.answer
-        : formatJson(response.answer),
-    );
-
-    const citations = response.citations ?? [];
-    if (citations.length > 0) {
-      lines.push("");
-      lines.push("Sources:");
-      for (const [index, citation] of citations.entries()) {
-        lines.push(
-          `${index + 1}. ${String(citation.title ?? citation.url ?? "Untitled")}`,
-        );
-        lines.push(`   ${String(citation.url ?? "")}`);
-      }
-    }
-
     return {
       provider: "exa",
-      text: lines.join("\n").trimEnd(),
-      itemCount: citations.length,
+      text:
+        typeof response.answer === "string"
+          ? response.answer
+          : response.answer == null
+            ? ""
+            : formatJson(response.answer),
+      sources: response.citations ?? [],
     };
   },
 
@@ -168,25 +151,10 @@ const exaImplementation = {
       context,
     )) as ExaSearchResponse;
     const content = result.output?.content;
-    if (typeof content !== "string" || !content.trim())
-      throw new WebfoxError(
-        "PROVIDER_FAILURE",
-        "Exa returned no research report.",
-      );
-    const sources = result.results ?? [];
-    const lines = [content.trim()];
-    if (sources.length) {
-      lines.push("", "Sources:");
-      for (const [index, source] of sources.entries())
-        lines.push(
-          `${index + 1}. ${source.title || source.url}`,
-          `   ${source.url}`,
-        );
-    }
     return {
       provider: "exa",
-      text: lines.join("\n"),
-      itemCount: sources.length,
+      text: typeof content === "string" ? content : "",
+      sources: result.results ?? [],
     };
   },
 };

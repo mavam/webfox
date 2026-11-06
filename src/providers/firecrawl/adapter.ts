@@ -86,20 +86,15 @@ const firecrawlImplementation = {
             const document = (asRecord(response.data) ??
               {}) as FirecrawlDocument;
             const content = getDocumentContent(document);
-            return content
-              ? {
-                  url,
-                  content,
-                  ...(asRecord(document.metadata)
-                    ? {
-                        metadata: document.metadata as Record<string, unknown>,
-                      }
-                    : {}),
-                }
-              : {
-                  url,
-                  error: "No content returned for this URL.",
-                };
+            return {
+              url,
+              ...(content ? { content } : {}),
+              ...(asRecord(document.metadata)
+                ? {
+                    metadata: document.metadata as Record<string, unknown>,
+                  }
+                : {}),
+            };
           } catch (error) {
             return {
               url,
@@ -134,16 +129,10 @@ const firecrawlImplementation = {
       context.signal,
     );
     const document = getFirecrawlDocument(response);
-    const answer = readString(document.answer);
-
-    if (!answer?.trim()) {
-      throw new Error("No answer returned for this URL.");
-    }
-
     return {
       provider: "firecrawl",
-      text: answer.trim(),
-      itemCount: 1,
+      text: readString(document.answer) ?? "",
+      sources: [{ url }],
       metadata: {
         url,
         ...(asRecord(document.metadata)
@@ -300,7 +289,7 @@ function toSearchResult(
     readString(metadata?.sourceURL) ??
     readString(entry.imageUrl) ??
     "";
-  const title = readString(entry.title) ?? readString(metadata?.title) ?? url;
+  const title = readString(entry.title) ?? readString(metadata?.title);
   const snippet = trimSnippet(
     readString(entry.description) ??
       readString(entry.snippet) ??
@@ -318,7 +307,7 @@ function toSearchResult(
   };
 
   return {
-    title: title || "Untitled",
+    title,
     url,
     snippet,
     metadata:

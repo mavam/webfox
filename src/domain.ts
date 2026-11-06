@@ -46,7 +46,8 @@ export type InputResult<T> =
   | { input: string; ok: true; value: T }
   | { input: string; ok: false; error: SerializedError };
 export interface SearchResult {
-  title: string;
+  /** Omitted when the provider has no title; renderers fall back to the URL. */
+  title?: string;
   url: string;
   snippet: string;
   score?: number;
@@ -55,12 +56,18 @@ export interface SearchResult {
 export interface ContentsAnswer {
   /** Final fetched URL; association with the requested URL is in InputResult.input. */
   url: string;
+  /** Omitted when the page has no content; an empty page is still a result. */
   content?: string;
   summary?: unknown;
   metadata?: Record<string, unknown>;
 }
+/** A cited source with a nonblank URL, title, or both. */
+export type Source = { url: string; title?: string } | { title: string };
 export interface TextAnswer {
+  /** Empty when the provider returned no text; an empty answer is still a result. */
   text: string;
+  sources?: Source[];
+  /** Number of sources, derived from `sources`. */
   itemCount?: number;
   metadata?: Record<string, unknown>;
 }

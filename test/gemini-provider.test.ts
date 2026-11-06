@@ -64,7 +64,7 @@ describe("Gemini HTTP answers", () => {
     expect(await provider.answer("Question", config, context)).toEqual({
       provider: "gemini",
       text: "Answer",
-      itemCount: 0,
+      sources: [],
     });
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
       `${base}models/gemini-3.8-flash:generateContent`,
@@ -150,12 +150,10 @@ describe("Gemini HTTP answers", () => {
     { candidates: [{ content: { parts: [{ text: " " }] } }] },
   ])("handles empty answer content", async (payload) => {
     mockResponse(payload);
-    expect((await provider.answer("Question", config, context)).text).toBe(
-      "No answer returned.",
-    );
+    expect((await provider.answer("Question", config, context)).text).toBe("");
   });
 
-  it("suppresses opaque grounding redirects, deduplicates sources, and caps them at five", async () => {
+  it("drops expiring grounding redirect URLs and deduplicates sources", async () => {
     mockResponse({
       candidates: [
         {
@@ -184,12 +182,15 @@ describe("Gemini HTTP answers", () => {
       ],
     });
     const result = await provider.answer("Question", config, context);
-    expect(result.text).toContain(
-      "Grounded answer\n\nSources:\n1. ACME overview\n2. ACME docs\n   https://example.com/docs",
-    );
-    expect(result.text).not.toContain("vertexaisearch.cloud.google.com");
-    expect(result.text).not.toContain("Source 3");
-    expect(result.itemCount).toBe(5);
+    expect(result.text).toBe("Grounded answer");
+    expect(result.sources).toEqual([
+      { title: "ACME overview", url: undefined },
+      { title: "ACME docs", url: "https://example.com/docs" },
+      ...Array.from({ length: 6 }, (_, i) => ({
+        title: `Source ${i}`,
+        url: `https://example.com/${i}`,
+      })),
+    ]);
   });
 });
 

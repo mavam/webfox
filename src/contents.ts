@@ -20,6 +20,19 @@ export interface IndexedContentsResponse {
     DocumentContents & { inputIndex: number; error?: SerializedError }
   >;
 }
+/**
+ * A batch response that leaves out a requested URL has no result for it. This
+ * is a failure, unlike a page that the provider returned without content.
+ */
+export function omittedContents(url: string): ContentsAnswer {
+  return {
+    url,
+    error: new WebfoxError(
+      "PROVIDER_FAILURE",
+      "The provider omitted a result for this URL.",
+    ).toJSON(),
+  };
+}
 /** Only adapters that themselves assemble pages in request order use this helper. */
 export function orderedContents(
   response: ContentsResponse,

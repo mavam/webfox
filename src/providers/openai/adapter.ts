@@ -480,26 +480,11 @@ function formatResponseOutput(
   response: OpenAIResponseLike,
   operation: "answer" | "research",
 ): ToolOutput {
-  const lines: string[] = [];
-  lines.push(
-    response.output_text?.trim() ||
-      `OpenAI ${operation} completed without textual output.`,
-  );
-
   const citations = extractUrlCitations(response);
-  if (citations.length > 0) {
-    lines.push("");
-    lines.push("Sources:");
-    for (const [index, citation] of citations.entries()) {
-      lines.push(`${index + 1}. ${citation.title}`);
-      lines.push(`   ${citation.url}`);
-    }
-  }
-
   return {
     provider: "openai",
-    text: lines.join("\n").trimEnd(),
-    itemCount: citations.length,
+    text: response.output_text ?? "",
+    sources: citations.map(({ title, url }) => ({ title, url })),
     metadata: {
       responseId: response.id,
       model: response.model,

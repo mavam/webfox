@@ -133,18 +133,11 @@ describe("Sofya", () => {
       include_answer: true,
       topic: "news",
     });
-    expect(output.text).toBe(
-      [
-        "Use AbortController.",
-        "",
-        "Sources:",
-        "1. Node.js",
-        "   https://nodejs.org/api/globals.html",
-        "2. Fallback",
-        "   https://example.org/",
-      ].join("\n"),
-    );
-    expect(output.itemCount).toBe(2);
+    expect(output.text).toBe("Use AbortController.");
+    expect(output.sources).toEqual([
+      { url: "https://nodejs.org/api/globals.html", title: "Node.js" },
+      { url: "https://example.org/", title: "Fallback" },
+    ]);
   });
 
   it("returns the research report with its sources", async () => {
@@ -168,8 +161,10 @@ describe("Sofya", () => {
       query: "wasm",
       max_sources: 5,
     });
-    expect(output.text).toContain("WebAssembly runs outside browsers [1].");
-    expect(output.text).toContain("1. WASI\n   https://wasi.dev/");
+    expect(output.text).toBe("WebAssembly runs outside browsers [1].");
+    expect(output.sources).toEqual([
+      { url: "https://wasi.dev/", title: "WASI" },
+    ]);
     expect(output.metadata).toEqual({ sub_queries: ["wasi", "wasm runtimes"] });
   });
 
@@ -213,7 +208,8 @@ describe("Sofya", () => {
       providerContext,
     );
 
-    expect(output.text).toMatch(/^No answer returned\.\n\nSources:/);
+    expect(output.text).toBe("");
+    expect(output.sources).toHaveLength(2);
     expect(output.metadata).toEqual({ relaxed_query: "node abort" });
   });
 

@@ -7,6 +7,7 @@ import {
   type Component,
 } from "@earendil-works/pi-tui";
 import type { SearchDocument } from "./domain.js";
+import { emptyResultText } from "./render.js";
 import { plainText, truncateLine } from "./pi-text.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -31,7 +32,7 @@ function searchDocument(value: unknown): value is SearchDocument {
       entry.value.results.every(
         (result) =>
           isRecord(result) &&
-          typeof result.title === "string" &&
+          (result.title === undefined || typeof result.title === "string") &&
           typeof result.url === "string" &&
           typeof result.snippet === "string",
       )
@@ -110,17 +111,22 @@ export function renderSearchResult(
           return;
         }
         if (!entry.value.results.length)
-          append(theme.fg("toolOutput", "No results found."));
+          append(theme.fg("toolOutput", emptyResultText("search")));
         entry.value.results.forEach((result, resultIndex) => {
           if (resultIndex) lines.push("");
           const number = `${resultIndex + 1}. `;
           const indent = " ".repeat(number.length);
-          append(
-            theme.fg("toolOutput", plainText(result.title)),
-            theme.fg("accent", number),
-          );
-          append(link(result.url, theme), indent);
-          if (result.snippet)
+          // Without a title, the URL itself labels the result.
+          if (result.title === undefined)
+            append(link(result.url, theme), theme.fg("accent", number));
+          else {
+            append(
+              theme.fg("toolOutput", plainText(result.title)),
+              theme.fg("accent", number),
+            );
+            append(link(result.url, theme), indent);
+          }
+          if (result.snippet.trim())
             append(theme.fg("toolOutput", plainText(result.snippet)), indent);
         });
       });

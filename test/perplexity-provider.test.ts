@@ -136,10 +136,10 @@ describe("Perplexity provider", () => {
       },
       undefined,
     );
-    expect(response.text).toBe(
-      "Perplexity answer\n\nSources:\n1. Source A\n   https://example.com/a",
-    );
-    expect(response.itemCount).toBe(1);
+    expect(response.text).toBe("Perplexity answer");
+    expect(response.sources).toEqual([
+      { url: "https://example.com/a", title: "Source A" },
+    ]);
   });
 
   it("streams research calls with sonar-deep-research", async () => {
@@ -198,10 +198,8 @@ describe("Perplexity provider", () => {
       },
       undefined,
     );
-    expect(response.text).toBe(
-      "Research result\n\nSources:\n1. https://example.com/research\n   https://example.com/research",
-    );
-    expect(response.itemCount).toBe(1);
+    expect(response.text).toBe("Research result");
+    expect(response.sources).toEqual([{ url: "https://example.com/research" }]);
   });
 
   it("falls back to citations when search_results is empty", async () => {
@@ -229,10 +227,8 @@ describe("Perplexity provider", () => {
       undefined,
     );
 
-    expect(response.text).toBe(
-      "Answer with citations fallback\n\nSources:\n1. https://example.com/fallback\n   https://example.com/fallback",
-    );
-    expect(response.itemCount).toBe(1);
+    expect(response.text).toBe("Answer with citations fallback");
+    expect(response.sources).toEqual([{ url: "https://example.com/fallback" }]);
   });
 
   it.each([

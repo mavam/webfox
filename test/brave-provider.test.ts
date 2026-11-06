@@ -240,6 +240,32 @@ describe("providerHarness(braveProvider)", () => {
     ]);
   });
 
+  it("returns an empty Brave answer instead of the raw stream", async () => {
+    process.env.BRAVE_ANSWERS_API_KEY = "answers-key";
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          [
+            'data: {"choices":[{"delta":{"content":"<citation>{\\"title\\":\\"Example source\\",\\"url\\":\\"https://example.com/source\\"}</citation>"}}]}',
+            "data: [DONE]",
+          ].join("\n\n"),
+          { status: 200 },
+        ),
+      ) as typeof fetch;
+
+    const response = await providerHarness(braveProvider).answer(
+      "what happened?",
+      { credentials: { answers: "answers-key" } },
+      { cwd: process.cwd() },
+    );
+
+    expect(response.text).toBe("");
+    expect(response.sources).toEqual([
+      { title: "Example source", url: "https://example.com/source" },
+    ]);
+  });
+
   it("sends Brave Answers search options under web_search_options and parses streamed tags", async () => {
     process.env.BRAVE_ANSWERS_API_KEY = "answers-key";
     const fetchMock = vi
@@ -298,14 +324,8 @@ describe("providerHarness(braveProvider)", () => {
     });
     expect(response).toEqual({
       provider: "brave",
-      text: [
-        "Answer text The Fame",
-        "",
-        "Sources:",
-        "1. Example source",
-        "   https://example.com/source",
-      ].join("\n"),
-      itemCount: 1,
+      text: "Answer text The Fame",
+      sources: [{ url: "https://example.com/source", title: "Example source" }],
       metadata: {
         usage: { "X-Request-Queries": 1 },
         entities: [

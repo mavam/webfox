@@ -53,7 +53,7 @@ it("accepts Firecrawl's success envelope with a null error and bare URLs", async
 
   expect(response.results).toEqual([
     {
-      title: "https://example.com",
+      title: undefined,
       url: "https://example.com",
       snippet: "",
       metadata: undefined,

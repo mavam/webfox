@@ -9,6 +9,7 @@ import type {
   ResearchPollResult,
   SearchResponse,
   SearchResult,
+  SourceInput,
   ToolOutput,
 } from "../contract.js";
 import type { Linkup } from "./types.js";
@@ -162,16 +163,11 @@ const linkupImplementation = {
                   ].includes(key) && value !== undefined,
               ),
             );
-            return response.markdown
-              ? {
-                  url,
-                  content: response.markdown,
-                  ...(Object.keys(metadata).length ? { metadata } : {}),
-                }
-              : {
-                  url,
-                  error: "No content returned for this URL.",
-                };
+            return {
+              url,
+              ...(response.markdown ? { content: response.markdown } : {}),
+              ...(Object.keys(metadata).length ? { metadata } : {}),
+            };
           } catch (error) {
             return {
               url,
@@ -479,43 +475,23 @@ function linkupError(response: Response, payload: unknown): WebfoxError {
 
 function formatResearchTaskOutput(task: ResearchTask): ToolOutput {
   const output = task.output;
-  if (!output) {
+  if (output == null) return { provider: "linkup", text: "" };
+  if (typeof output === "string") return { provider: "linkup", text: output };
+  const outputType = readString(asRecord(task.input)?.outputType);
+  const record = asRecord(output);
+  // A sourced answer may lack its text; that is an empty answer, while
+  // structured output is the answer itself and is serialized as text.
+  if (
+    outputType !== "structured" &&
+    record &&
+    ("answer" in record || "sources" in record)
+  )
     return {
       provider: "linkup",
-      text: "Linkup research completed without textual output.",
+      text: readString(record.answer) ?? "",
+      sources: readSources(record.sources),
     };
-  }
-
-  const outputRecord = asRecord(output);
-  const inputRecord = asRecord(task.input);
-  const outputType = inputRecord
-    ? readString(inputRecord.outputType)
-    : undefined;
-  const answer = outputRecord ? readString(outputRecord.answer) : undefined;
-  const sources = outputRecord ? readSources(outputRecord.sources) : [];
-
-  if (outputType !== "structured" && answer !== undefined) {
-    const lines = [answer];
-    if (sources.length > 0) {
-      lines.push("");
-      lines.push("Sources:");
-      for (const [index, source] of sources.entries()) {
-        lines.push(`${index + 1}. ${source.title}`);
-        lines.push(`   ${source.url}`);
-      }
-    }
-
-    return {
-      provider: "linkup",
-      text: lines.join("\n").trimEnd(),
-      itemCount: sources.length,
-    };
-  }
-
-  return {
-    provider: "linkup",
-    text: formatJson(output),
-  };
+  return { provider: "linkup", text: formatJson(output) };
 }
 
 function toSearchResult(value: unknown): SearchResult | null {
@@ -525,7 +501,7 @@ function toSearchResult(value: unknown): SearchResult | null {
   }
 
   const url = readString(entry.url) ?? "";
-  const title = readString(entry.name) ?? (url || "Untitled");
+  const title = readString(entry.name);
   const type = readString(entry.type);
   const favicon = readString(entry.favicon);
   const snippet =
@@ -543,7 +519,7 @@ function toSearchResult(value: unknown): SearchResult | null {
   };
 }
 
-function readSources(value: unknown): Array<{ title: string; url: string }> {
+function readSources(value: unknown): SourceInput[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -561,7 +537,7 @@ function readSources(value: unknown): Array<{ title: string; url: string }> {
 
     return [
       {
-        title: readString(source.name) ?? url,
+        title: readString(source.name),
         url,
       },
     ];

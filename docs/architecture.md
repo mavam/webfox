@@ -49,6 +49,15 @@ adapter declares the entire operation safe to repeat. Polling uses the runtime
 retry count/backoff without repeating job creation. Valyu contents can create an
 async job, so repeating the entire contents operation is not marked safe.
 
+Adapters translate provider responses into data and never decide presentation.
+An empty result is a successful result: no search hits, an answer or report with
+empty `text`, or a page without content. Adapters return it as such, without
+placeholder text, invented titles, or formatted source lists. A result the
+provider omitted entirely is a failure instead. The runtime gives every result
+one canonical shape: it omits blank search titles and page content, trims
+sources, drops sources without a URL or title, and derives `itemCount`. Only
+`src/render.ts` decides how empty results, untitled results, and sources look.
+
 Contents operations are scheduled one URL at a time. Adapters return explicit
 request-local indexes, not URL-based associations. The runtime rejects missing,
 duplicate, or out-of-range indexes. This preserves duplicate inputs and completed

@@ -231,7 +231,8 @@ it("uses /search, not retired /research, and preserves the synthesized report an
   expect(result.results[0]).toMatchObject({
     ok: true,
     value: {
-      text: "# Research report\n\nFindings.\n\nSources:\n1. Source\n   https://example.com",
+      text: "# Research report\n\nFindings.",
+      sources: [{ url: "https://example.com", title: "Source" }],
       itemCount: 1,
     },
   });
@@ -246,17 +247,14 @@ it("uses /search, not retired /research, and preserves the synthesized report an
   });
 });
 
-it("does not silently succeed without a synthesized report", async () => {
+it("returns an empty report as a valid result", async () => {
   const result = await client().research({
     provider: "exa",
     input: "question",
   });
   expect(result.results[0]).toMatchObject({
-    ok: false,
-    error: {
-      code: "PROVIDER_FAILURE",
-      message: "Exa returned no research report.",
-    },
+    ok: true,
+    value: { text: "" },
   });
   expect(requests).toHaveLength(1);
 });
