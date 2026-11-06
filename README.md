@@ -11,18 +11,6 @@ Search the web, extract pages, get grounded answers, and run deep research with
 one command: `web`. Choose your providers, bring your API keys, and use the same
 configuration in your terminal, TypeScript applications, and pi.
 
-> [!IMPORTANT]
-> **Coming from pi-web-providers?** Webfox continues the project as **v4.0.0**.
-> Replace the old Pi package:
->
-> ```sh
-> pi remove npm:pi-web-providers
-> pi install npm:webfox
-> ```
->
-> Recreate your provider defaults in the [Webfox configuration](./docs/reference.md#configuration)
-> and restart pi. The old `~/.pi/agent/web-providers.json` settings aren't imported.
-
 ## 🚀 Installation
 
 - **Terminal:** Install the `web` command with [Homebrew](https://github.com/mavam/homebrew-tap):
