@@ -40,7 +40,7 @@ async function searchOllama(
   return {
     provider: "ollama",
     results: results.slice(0, clampMaxResults(maxResults)).map((result) => ({
-      title: result.title || result.url || "Untitled",
+      title: result.title,
       url: result.url ?? "",
       snippet: trimSnippet(result.content),
     })),
@@ -81,12 +81,6 @@ async function fetchOllamaContents(
 
           const data = (await response.json()) as OllamaFetchResponse;
           const content = normalizeContentText(data.content);
-          if (!content) {
-            return {
-              url,
-              error: "No content returned for this URL.",
-            };
-          }
 
           const metadata = buildFetchMetadata(data);
           return {

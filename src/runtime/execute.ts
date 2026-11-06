@@ -5,6 +5,8 @@ import type {
   InputResult,
   RequestOptions,
   ProgressEvent,
+  SearchResult,
+  Source,
 } from "../domain.js";
 import type {
   ExecutionConfig,
@@ -19,6 +21,7 @@ import type {
   ProviderContext,
   ProviderRequest,
   ProviderResult,
+  SourceInput,
 } from "../providers/contract.js";
 import { asWebfoxError, WebfoxError } from "../errors.js";
 import { CredentialResolver } from "./credentials.js";
@@ -147,7 +150,14 @@ export class ExecutionRuntime {
               throw new WebfoxError(answer.error.code, answer.error.message, {
                 retryable: answer.error.retryable,
               });
-            const { inputIndex: _index, error: _error, ...value } = answer;
+            const {
+              inputIndex: _index,
+              error: _error,
+              content,
+              ...rest
+            } = answer;
+            // An empty page is a result; omit blank content canonically.
+            const value = content?.trim() ? { ...rest, content } : rest;
             return { input, ok: true, value: value as CapabilityValues[C] };
           }
           const operation: ProviderRequest =
@@ -171,10 +181,9 @@ export class ExecutionRuntime {
           const value =
             capability === "search"
               ? {
-                  results: (result as ProviderResult<"search">).results.slice(
-                    0,
-                    plan.maxResults,
-                  ),
+                  results: (result as ProviderResult<"search">).results
+                    .slice(0, plan.maxResults)
+                    .map(searchValue),
                 }
               : textValue(result as ProviderResult<"answer">);
           return { input, ok: true, value: value as CapabilityValues[C] };
@@ -275,10 +284,22 @@ export class ExecutionRuntime {
     }
   }
 }
+function searchValue({ title, ...result }: SearchResult): SearchResult {
+  const trimmed = title?.trim();
+  return trimmed ? { title: trimmed, ...result } : result;
+}
 function textValue(value: ProviderResult<"answer">) {
+  const sources = value.sources?.flatMap(sourceValue);
   return {
     text: value.text,
-    ...(value.itemCount === undefined ? {} : { itemCount: value.itemCount }),
+    ...(sources === undefined ? {} : { sources, itemCount: sources.length }),
     ...(value.metadata === undefined ? {} : { metadata: value.metadata }),
   };
+}
+/** Keep a citation only when it has a nonblank URL or title. */
+function sourceValue(source: SourceInput): Source[] {
+  const url = typeof source.url === "string" ? source.url.trim() : "";
+  const title = typeof source.title === "string" ? source.title.trim() : "";
+  if (url) return [title ? { url, title } : { url }];
+  return title ? [{ title }] : [];
 }

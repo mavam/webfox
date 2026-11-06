@@ -70,12 +70,7 @@ export async function executeAsyncResearch({
     // Terminal status is represented by the final result, not another
     // running/progress line immediately before a success or error message.
     if (result.status === "completed")
-      return (
-        result.output ?? {
-          provider: providerId,
-          text: `${providerLabel} research completed without textual output.`,
-        }
-      );
+      return result.output ?? { provider: providerId, text: "" };
     if (result.status === "failed" || result.status === "cancelled")
       throw new WebfoxError(
         result.status === "cancelled" ? "CANCELLED" : "PROVIDER_FAILURE",

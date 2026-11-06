@@ -244,9 +244,10 @@ describe("OpenAI provider", () => {
         signal: expect.any(AbortSignal),
       }),
     );
-    expect(successful(result.results[0])?.text).toBe(
-      "OpenAI grounded answer\n\nSources:\n1. Answer Source\n   https://example.com/answer",
-    );
+    expect(successful(result.results[0])).toMatchObject({
+      text: "OpenAI grounded answer",
+      sources: [{ url: "https://example.com/answer", title: "Answer Source" }],
+    });
   });
 });
 
@@ -382,9 +383,10 @@ describe("async research providers", () => {
         signal: expect.any(AbortSignal),
       }),
     );
-    expect(successful(result.results[0])?.text).toBe(
-      "OpenAI research result\n\nSources:\n1. Source A\n   https://example.com/a",
-    );
+    expect(successful(result.results[0])).toMatchObject({
+      text: "OpenAI research result",
+      sources: [{ url: "https://example.com/a", title: "Source A" }],
+    });
   });
 
   it("uses Valyu polling so transient errors do not create duplicate jobs", async () => {
@@ -436,9 +438,10 @@ describe("async research providers", () => {
       1,
       "valyu-job-1",
     );
-    expect(successful(result.results[0])?.text).toBe(
-      "Valyu research result\n\nSources:\n1. Source A\n   https://example.com/a",
-    );
+    expect(successful(result.results[0])).toMatchObject({
+      text: "Valyu research result",
+      sources: [{ url: "https://example.com/a", title: "Source A" }],
+    });
   });
 });
 

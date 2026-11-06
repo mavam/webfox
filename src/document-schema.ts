@@ -16,7 +16,7 @@ const metadata = Type.Record(Type.String(), Type.Unknown(), {
 
 const searchResult = Type.Object(
   {
-    title: Type.String(),
+    title: Type.Optional(Type.String({ minLength: 1 })),
     url: Type.String(),
     snippet: Type.String(),
     score: Type.Optional(Type.Number()),
@@ -36,6 +36,20 @@ const contentsAnswer = Type.Object(
 const textAnswer = Type.Object(
   {
     text: Type.String(),
+    sources: Type.Optional(
+      Type.Array(
+        Type.Union([
+          Type.Object(
+            {
+              url: Type.String({ minLength: 1 }),
+              title: Type.Optional(Type.String({ minLength: 1 })),
+            },
+            closed,
+          ),
+          Type.Object({ title: Type.String({ minLength: 1 }) }, closed),
+        ]),
+      ),
+    ),
     itemCount: Type.Optional(Type.Integer()),
     metadata: Type.Optional(metadata),
   },

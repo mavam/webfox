@@ -9,10 +9,20 @@ export interface SearchResponse {
   results: SearchResult[];
 }
 
+/** A provider citation; the runtime trims fields and drops blank entries. */
+export interface SourceInput {
+  url?: string;
+  title?: string;
+}
+
+/**
+ * Answer and research output. Return the provider's text as-is, even when
+ * empty, and its citations as `sources`; presentation belongs to the renderer.
+ */
 export interface ToolOutput {
   provider: ProviderId;
   text: string;
-  itemCount?: number;
+  sources?: SourceInput[];
   metadata?: Record<string, unknown>;
 }
 
@@ -105,6 +115,7 @@ export interface ProviderConfigMap {
   perplexity: import("./perplexity/types.js").Perplexity;
   serpbase: import("./serpbase/types.js").SerpBase;
   serper: import("./serper/types.js").Serper;
+  sofya: import("./sofya/types.js").Sofya;
   tavily: import("./tavily/types.js").Tavily;
   valyu: import("./valyu/types.js").Valyu;
   youcom: import("./youcom/types.js").Youcom;

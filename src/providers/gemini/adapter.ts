@@ -5,6 +5,7 @@ import type {
   ProviderContext,
   ResearchJob,
   ResearchPollResult,
+  SourceInput,
   ToolOutput,
 } from "../contract.js";
 import type { Gemini } from "./types.js";
@@ -48,26 +49,12 @@ export const geminiImplementation = {
           .join("")
           .trim()
       : "";
-    const lines: string[] = [text || "No answer returned."];
-
-    const sources = extractGroundingSources(
-      asRecord(candidate.groundingMetadata).groundingChunks,
-    );
-    if (sources.length > 0) {
-      lines.push("");
-      lines.push("Sources:");
-      for (const [index, source] of sources.entries()) {
-        lines.push(`${index + 1}. ${source.title}`);
-        if (source.url) {
-          lines.push(`   ${source.url}`);
-        }
-      }
-    }
-
     return {
       provider: "gemini",
-      text: lines.join("\n").trimEnd(),
-      itemCount: sources.length,
+      text,
+      sources: extractGroundingSources(
+        asRecord(candidate.groundingMetadata).groundingChunks,
+      ),
     };
   },
 
@@ -135,7 +122,7 @@ export const geminiImplementation = {
         status: "completed",
         output: {
           provider: "gemini",
-          text: text || "Gemini research completed without textual output.",
+          text,
         },
       };
     }
@@ -230,49 +217,23 @@ function readInteractionSteps(interaction: unknown): unknown {
     : undefined;
 }
 
-function extractGroundingSources(
-  chunks: unknown,
-): Array<{ title: string; url: string }> {
+/**
+ * Google's grounding redirect URLs expire, so they are not stable citations;
+ * keep only the title for those sources.
+ */
+function extractGroundingSources(chunks: unknown): SourceInput[] {
+  if (!Array.isArray(chunks)) return [];
   const seen = new Set<string>();
-  const sources: Array<{ title: string; url: string }> = [];
-  const maxSources = 5;
-
-  if (!Array.isArray(chunks)) {
-    return sources;
-  }
-
-  for (const chunk of chunks) {
-    const web =
-      typeof chunk === "object" &&
-      chunk !== null &&
-      "web" in chunk &&
-      typeof chunk.web === "object" &&
-      chunk.web !== null
-        ? (chunk.web as Record<string, unknown>)
-        : undefined;
-    if (!web) continue;
-
-    const rawUrl = typeof web.uri === "string" ? web.uri : "";
-    const title = formatGroundingSourceTitle(
-      typeof web.title === "string" ? web.title : rawUrl,
-      rawUrl,
-    );
-    const url = formatGroundingSourceUrl(rawUrl);
-    const key = [title.toLowerCase(), url.toLowerCase()].join("::");
-    if (seen.has(key)) continue;
+  return chunks.flatMap((chunk) => {
+    const web = asRecord(asRecord(chunk).web);
+    const title = typeof web.title === "string" ? web.title : undefined;
+    const uri = typeof web.uri === "string" ? web.uri : undefined;
+    const url = uri && !isGoogleGroundingRedirect(uri) ? uri : undefined;
+    const key = `${title?.toLowerCase() ?? ""}::${url?.toLowerCase() ?? ""}`;
+    if (seen.has(key)) return [];
     seen.add(key);
-
-    sources.push({
-      title,
-      url,
-    });
-
-    if (sources.length >= maxSources) {
-      break;
-    }
-  }
-
-  return sources;
+    return [{ title, url }];
+  });
 }
 
 function formatInteractionSteps(steps: unknown): string {
@@ -312,38 +273,6 @@ function formatInteractionSteps(steps: unknown): string {
   }
 
   return lines.join("\n\n").trim();
-}
-
-function formatGroundingSourceTitle(
-  title: string | undefined,
-  url: string,
-): string {
-  const trimmedTitle = title?.trim();
-  if (trimmedTitle) {
-    return trimmedTitle;
-  }
-
-  if (url) {
-    try {
-      return new URL(url).hostname;
-    } catch {
-      return url;
-    }
-  }
-
-  return "Untitled";
-}
-
-function formatGroundingSourceUrl(url: string): string {
-  if (!url) {
-    return "";
-  }
-
-  if (isGoogleGroundingRedirect(url)) {
-    return "";
-  }
-
-  return url;
 }
 
 function isGoogleGroundingRedirect(url: string): boolean {

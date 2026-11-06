@@ -12,6 +12,7 @@ import { parallelProvider } from "./parallel/definition.js";
 import { perplexityProvider } from "./perplexity/definition.js";
 import { serpbaseProvider } from "./serpbase/definition.js";
 import { serperProvider } from "./serper/definition.js";
+import { sofyaProvider } from "./sofya/definition.js";
 import { tavilyProvider } from "./tavily/definition.js";
 import { valyuProvider } from "./valyu/definition.js";
 import { youcomProvider } from "./youcom/definition.js";
@@ -31,6 +32,7 @@ export const providers = {
   perplexity: perplexityProvider,
   serpbase: serpbaseProvider,
   serper: serperProvider,
+  sofya: sofyaProvider,
   tavily: tavilyProvider,
   valyu: valyuProvider,
   youcom: youcomProvider,

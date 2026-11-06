@@ -139,7 +139,7 @@ function toSearchResult(
   if (!url) return undefined;
   const { title, link: _link, url: _url, snippet, ...metadata } = record;
   return {
-    title: text(title) ?? text(record.name) ?? url,
+    title: text(title) ?? text(record.name),
     url,
     snippet: resultSnippet(record, mode),
     metadata: { ...metadata, mode, searchContext },

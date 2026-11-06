@@ -403,19 +403,18 @@ function toSearchResult(
   const user = asRecord(record.user);
   const resultUrl =
     firstString(record.link, record.website, record.url, record.imageUrl) ?? "";
-  const title =
-    firstNonEmptyString(
-      record.title,
-      responseMetadata?.title,
-      record.name,
-      record.query,
-      record.value,
-      user?.name,
-      formatReviewTitle(record, user),
-      resultUrl,
-    ) ?? "Untitled";
+  const title = firstNonEmptyString(
+    record.title,
+    responseMetadata?.title,
+    record.name,
+    record.query,
+    record.value,
+    user?.name,
+    formatReviewTitle(record, user),
+  );
   const url =
-    resultUrl || (mode === "autocomplete" ? toGoogleSearchUrl(title) : "");
+    resultUrl ||
+    (mode === "autocomplete" && title ? toGoogleSearchUrl(title) : "");
   const snippet = trimSnippet(
     firstNonEmptyString(
       record.snippet,

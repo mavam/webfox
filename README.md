@@ -140,6 +140,7 @@ Use different providers for different tasks:
 | [Perplexity] |   ✔︎    |          |   ✔︎    |    ✔︎     |
 | [SerpBase]   |   ✔︎    |          |        |          |
 | [Serper]     |   ✔︎    |          |        |          |
+| [Sofya]      |   ✔︎    |    ✔︎     |   ✔︎    |    ✔︎     |
 | [Tavily]     |   ✔︎    |    ✔︎     |        |          |
 | [Valyu]      |   ✔︎    |    ✔︎     |   ✔︎    |    ✔︎     |
 | [You.com]    |   ✔︎    |          |        |          |
@@ -158,6 +159,7 @@ Use different providers for different tasks:
 [Perplexity]: ./docs/provider.md#perplexity
 [SerpBase]: ./docs/provider.md#serpbase
 [Serper]: ./docs/provider.md#serper
+[Sofya]: ./docs/provider.md#sofya
 [Tavily]: ./docs/provider.md#tavily
 [Valyu]: ./docs/provider.md#valyu
 [You.com]: ./docs/provider.md#youcom

@@ -80,7 +80,7 @@ function collectResults(
   section: "web" | "news",
   searchMetadata: Record<string, unknown> | undefined,
 ): Array<{
-  title: string;
+  title?: string;
   url: string;
   snippet: string;
   metadata?: Record<string, unknown>;
@@ -90,8 +90,7 @@ function collectResults(
     .filter((entry) => Object.keys(entry).length > 0)
     .map((entry) => {
       const url = string(entry.url) ?? "";
-      const title =
-        string(entry.title) ?? string(entry.name) ?? (url || "Untitled");
+      const title = string(entry.title) ?? string(entry.name);
       return {
         title,
         url,

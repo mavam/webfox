@@ -148,6 +148,21 @@ const samples: Array<{
       snippet_max_length: 500,
     },
   },
+  {
+    provider: "sofya",
+    capability: "search",
+    options: {
+      search_depth: "basic",
+      topic: "news",
+      freshness: "2026-01-01:2026-02-01",
+      include_domains: ["nodejs.org"],
+    },
+  },
+  {
+    provider: "sofya",
+    capability: "research",
+    options: { topic: "general", freshness: "month", max_sources: 10 },
+  },
 ];
 it.each(samples)(
   "accepts provider-native $provider $capability controls",
@@ -183,6 +198,8 @@ it.each([
   ["tavily", "contents", { extractDepth: "deep" }],
   ["keenable", "search", { mode: "invented" }],
   ["keenable", "search", { snippet_max_length: 100 }],
+  ["sofya", "search", { freshness: "last week" }],
+  ["sofya", "research", { max_sources: 50 }],
   ["perplexity", "search", { search_mode: "invented" }],
   ["openai", "research", { userLocation: { country: "US" } }],
   ["valyu", "research", { tools: { browser_use: { arbitrarySetting: true } } }],

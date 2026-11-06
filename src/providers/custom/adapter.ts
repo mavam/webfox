@@ -1,10 +1,11 @@
 import type { IndexedContentsResponse } from "../../contents.js";
-import { WEBFOX_ERROR_CODES, type SerializedError } from "../../domain.js";
+import { type SerializedError, WEBFOX_ERROR_CODES } from "../../domain.js";
 import type { Custom } from "./types.js";
 import type {
   ProviderContext,
   ProviderRequest,
   SearchResponse,
+  SourceInput,
   ToolOutput,
 } from "../contract.js";
 
@@ -51,7 +52,9 @@ export const adapter = {
       results: output.results.map((entry) => {
         const result = object(entry, "Search results must be objects.");
         return {
-          title: string(result.title, "title"),
+          ...(result.title === undefined
+            ? {}
+            : { title: string(result.title, "title") }),
           url: string(result.url, "url"),
           snippet: string(result.snippet, "snippet"),
           ...(typeof result.score === "number" ? { score: result.score } : {}),
@@ -80,14 +83,9 @@ export const adapter = {
           invalid(
             "Every custom contents answer requires inputIndex (the zero-based requested URL index).",
           );
+        // A page without content, summary, or error is a valid empty page.
         const error =
           answer.error === undefined ? undefined : parseError(answer.error);
-        if (
-          answer.content === undefined &&
-          answer.summary === undefined &&
-          error === undefined
-        )
-          invalid("Contents answers require content, summary, or error.");
         return {
           inputIndex: answer.inputIndex as number,
           url: string(answer.url, "url"),
@@ -124,15 +122,27 @@ function textOutput(output: Record<string, unknown>): ToolOutput {
   return {
     provider: "custom",
     text: string(output.text, "text"),
-    ...(typeof output.itemCount === "number" &&
-    Number.isSafeInteger(output.itemCount) &&
-    output.itemCount >= 0
-      ? { itemCount: output.itemCount }
-      : {}),
+    ...(output.sources === undefined
+      ? {}
+      : { sources: parseSources(output.sources) }),
     ...(output.metadata
       ? { metadata: object(output.metadata, "metadata must be an object") }
       : {}),
   };
+}
+function parseSources(value: unknown): SourceInput[] {
+  if (!Array.isArray(value)) invalid("Custom output sources must be an array.");
+  return value.map((entry) => {
+    const source = object(entry, "Custom output sources must be objects.");
+    return {
+      ...(source.url === undefined
+        ? {}
+        : { url: string(source.url, "sources[].url") }),
+      ...(source.title === undefined
+        ? {}
+        : { title: string(source.title, "sources[].title") }),
+    };
+  });
 }
 function parseError(value: unknown): SerializedError {
   const error = object(

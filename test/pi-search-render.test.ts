@@ -130,6 +130,19 @@ describe("plain-text search result rendering", () => {
     expect(after).toContain("\x1b]8;;https://example.com/packages\x1b\\");
   });
 
+  it("labels an untitled result with its link", () => {
+    const doc = document();
+    const entry = doc.results[0];
+    if (!entry.ok) throw new Error("Expected successful fixture");
+    entry.value.results[0] = { url: "https://example.com/u", snippet: "" };
+    const text = stripVTControlCharacters(
+      renderSearchResult({ result: doc }, "unused", theme())
+        .render(200)
+        .join("\n"),
+    );
+    expect(text.trimEnd()).toBe("1. https://example.com/u");
+  });
+
   it("formats query headings, empty results, and partial failures explicitly", () => {
     const doc = document();
     doc.status = "partial";

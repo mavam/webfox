@@ -32,10 +32,16 @@ Payloads and responses:
 
 | Capability | Input | Response |
 | --- | --- | --- |
-| Search | `{ "query": "...", "maxResults": 5 }` | `{ "results": [{ "title": "...", "url": "https://...", "snippet": "..." }] }` |
+| Search | `{ "query": "...", "maxResults": 5 }` | `{ "results": [{ "title": "...", "url": "https://...", "snippet": "..." }] }` (`title` is optional) |
 | Contents | `{ "urls": ["https://..."] }` | `{ "answers": [{ "inputIndex": 0, "url": "https://...", "content": "..." }] }` |
-| Answer | `{ "query": "..." }` | `{ "text": "..." }` |
-| Research | `{ "input": "..." }` | `{ "text": "..." }` |
+| Answer | `{ "query": "..." }` | `{ "text": "...", "sources": [{ "url": "https://...", "title": "..." }] }` |
+| Research | `{ "input": "..." }` | `{ "text": "...", "sources": [{ "url": "https://...", "title": "..." }] }` |
+
+Return results as data and leave presentation to webfox. Empty results are
+valid: return no search results, an empty `text`, or a page without `content`
+instead of placeholder text. Omit titles you don't have rather than repeating
+the URL. `sources` is optional; webfox drops sources that have neither a `url`
+nor a `title`.
 
 Contents answers must cover every request index exactly once. `inputIndex`
 associates a response with the requested URL; `url` can hold a redirected URL.

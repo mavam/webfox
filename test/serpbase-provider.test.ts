@@ -170,11 +170,10 @@ describe("SerpBase search", () => {
     vi.stubGlobal("fetch", fetch);
     const result = await adapter.search(request, config, providerContext);
     expect(result.results).toHaveLength(2);
-    expect(result.results[0]).toMatchObject({
-      title: "https://example.com",
-      url: "https://example.com",
-      snippet: "",
-    });
+    expect(result.results[0]).toEqual(
+      expect.objectContaining({ url: "https://example.com", snippet: "" }),
+    );
+    expect(result.results[0].title).toBeUndefined();
     expect(result.results[1].snippet).toHaveLength(300);
     for (const body of [{ status: 0 }, { status: 0, organic: [] }]) {
       vi.stubGlobal("fetch", mockResponse(body));

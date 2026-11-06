@@ -92,7 +92,7 @@ function toSearchResult(entry: unknown): SearchResult | undefined {
   // `description` is deprecated upstream and usually empty; prefer `snippet`.
   const excerpt = text(snippet) ?? text(description);
   return {
-    title: text(title) ?? url,
+    title: text(title),
     url,
     snippet: excerpt ? trimSnippet(excerpt) : "",
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
