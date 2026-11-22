@@ -97,7 +97,14 @@ export default function webExtension(pi: ExtensionAPI): void {
           context.lastComponent instanceof WebCall
             ? context.lastComponent
             : new WebCall(capability);
-        call.update(args, theme, context.expanded);
+        call.update(
+          args,
+          theme,
+          context.expanded,
+          typeof context.keyText === "function"
+            ? (keybinding) => context.keyText(keybinding)
+            : undefined,
+        );
         return call;
       },
       renderResult(result, options, theme, context) {

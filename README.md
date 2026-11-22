@@ -363,8 +363,9 @@ and preserves partial failures. Large text results are saved to private files.
 Interrupted requests are not replayed automatically, since providers may charge
 for them. Cancelling a request may not cancel a provider's already-running job.
 
-The adapter requires Pi Durable 1.0. It does not install a CLI, register standard
-Pi renderers, or provide codemode's structured-result interface.
+The adapter requires Pi Durable 1.6. It declares the `web` namespace and
+structured result schemas for codemode, but does not install a CLI or register
+standard Pi renderers.
 
 ## 🩺 Troubleshooting
 

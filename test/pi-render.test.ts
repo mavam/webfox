@@ -195,6 +195,18 @@ describe("vertical web rendering", () => {
     expect(call.render(200)).toEqual(["web search (ctrl+o to expand)"]);
   });
 
+  it("prefers host-supplied keyText over local keybinding fallbacks", () => {
+    const call = new WebCall("search");
+    const th = theme();
+    const keyText = vi.fn(() => "alt+e");
+    call.update({}, th, false, keyText);
+    expect(call.render(100)).toEqual(["web search (alt+e to expand)"]);
+    expect(keyText).toHaveBeenCalledWith("app.tools.expand");
+
+    call.update({}, th, false, () => "");
+    expect(call.render(100)).toEqual(["web search"]);
+  });
+
   it("uses the active shortcut and native hint colors, including remaps and disabled bindings", () => {
     const call = new WebCall("answer");
     const th = theme();
