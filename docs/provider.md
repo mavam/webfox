@@ -457,6 +457,9 @@ web contents https://example.com --provider tavily
 
 Supports search, page extraction, answers, and research. Set `VALYU_API_KEY`.
 
+Valyu deprecated its Answer API (retires 2026-12-17); prefer `research` with
+`--mode instant` or `search` for new workflows.
+
 ```sh
 web search "Node.js release notes" --provider valyu
 ```

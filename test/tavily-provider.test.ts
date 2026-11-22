@@ -10,13 +10,12 @@ vi.mock("@tavily/core", () => ({
   tavily: tavilyFactoryMock.mockImplementation(function mockTavily() {
     return {
       search: searchMock,
-      searchQNA: vi.fn(),
-      searchContext: vi.fn(),
       extract: extractMock,
       crawl: vi.fn(),
       map: vi.fn(),
       research: vi.fn(),
       getResearch: vi.fn(),
+      feedback: vi.fn(),
     };
   }),
 }));
@@ -38,6 +37,7 @@ describe("providerHarness(tavilyProvider)", () => {
       query: "tavily sdk",
       responseTime: 1.09,
       requestId: "request-123",
+      usage: { credits: 1 },
       images: [],
       results: [
         {
@@ -88,6 +88,7 @@ describe("providerHarness(tavilyProvider)", () => {
           favicon: "https://docs.tavily.com/favicon.ico",
           rawContent: "Raw Tavily Docs",
           requestId: "request-123",
+          usage: { credits: 1 },
           responseTime: 1.09,
         },
       },

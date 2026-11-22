@@ -3,7 +3,7 @@ import type { TavilySearchOptions, TavilyExtractOptions } from "@tavily/core";
 import type { SearchParams } from "parallel-web/resources/top-level";
 import type { MarkdownCreateParams } from "cloudflare/resources/browser-rendering/markdown";
 import type { CompletionCreateParams } from "@perplexity-ai/perplexity_ai/resources/chat/completions";
-import type { DeepResearchTools } from "valyu-js";
+import type { DeepResearchCreateOptions, DeepResearchTools } from "valyu-js";
 import type { Capability, ProviderId } from "../src/domain.js";
 import { providers } from "../src/providers/registry.js";
 import { validateOptions } from "../src/configuration/planning.js";
@@ -53,6 +53,17 @@ const samples: Array<{
       searchDepth: "ultra-fast",
       includeAnswer: "advanced",
       includeRawContent: "markdown",
+      includeImageDescriptions: true,
+      includeDomainsMode: "prefer",
+      maxAgeHours: 24,
+      fetchTimeout: 10,
+      cacheFallback: true,
+      language: "en",
+      filterByLanguage: true,
+      safeSearch: true,
+      includePublishedDate: true,
+      filterByPublishedDate: true,
+      includeUsage: true,
       timeRange: "week",
     } satisfies TavilySearchOptions,
   },
@@ -63,6 +74,7 @@ const samples: Array<{
       extractDepth: "advanced",
       query: "release dates",
       chunksPerSource: 3,
+      includeUsage: true,
       timeout: 30,
     } satisfies TavilyExtractOptions,
   },
@@ -111,11 +123,14 @@ const samples: Array<{
     provider: "valyu",
     capability: "research",
     options: {
+      mode: "instant",
+      outputFormats: ["markdown", "structured_report"],
+      skills: ["forecasting"],
       tools: {
         browser_use: { enabled: true, max_calls: 3 },
         screenshots: false,
       } satisfies DeepResearchTools,
-    },
+    } satisfies Omit<DeepResearchCreateOptions, "input" | "query">,
   },
   {
     provider: "serpbase",

@@ -109,9 +109,17 @@ export const tavilyProvider = defineProvider({
             type: "boolean",
             description: "Include related images.",
           },
+          includeImageDescriptions: {
+            type: "boolean",
+            description: "Request descriptions for returned images.",
+          },
           includeFavicon: {
             type: "boolean",
             description: "Include favicon URLs.",
+          },
+          includeUsage: {
+            type: "boolean",
+            description: "Request credit usage details.",
           },
           includeDomains: {
             type: "array",
@@ -120,12 +128,52 @@ export const tavilyProvider = defineProvider({
             },
             description: "Restrict results to these domains.",
           },
+          includeDomainsMode: {
+            type: "string",
+            enum: ["restrict", "prefer"],
+            description: "How to apply includeDomains.",
+          },
           excludeDomains: {
             type: "array",
             items: {
               type: "string",
             },
             description: "Exclude these domains from results.",
+          },
+          maxAgeHours: {
+            type: "number",
+            minimum: 0,
+            description: "Maximum acceptable cache age in hours.",
+          },
+          fetchTimeout: {
+            type: "number",
+            exclusiveMinimum: 0,
+            description: "Live-fetch time budget in seconds.",
+          },
+          cacheFallback: {
+            type: "boolean",
+            description: "Allow cached content when live fetching fails.",
+          },
+          language: {
+            type: "string",
+            description: "Preferred content language.",
+          },
+          filterByLanguage: {
+            type: "boolean",
+            description: "Restrict results to the requested language.",
+          },
+          safeSearch: {
+            type: "boolean",
+            description: "Filter explicit content from results.",
+          },
+          includePublishedDate: {
+            type: "boolean",
+            description: "Request detected publication dates.",
+          },
+          filterByPublishedDate: {
+            type: "boolean",
+            description:
+              "Exclude undated results and results outside the requested date window; also enables publication dates.",
           },
           days: {
             type: "integer",
@@ -188,6 +236,10 @@ export const tavilyProvider = defineProvider({
           includeFavicon: {
             type: "boolean",
             description: "Include favicon URLs.",
+          },
+          includeUsage: {
+            type: "boolean",
+            description: "Request credit usage details.",
           },
         },
         description: "Tavily extract options.",

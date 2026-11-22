@@ -186,11 +186,12 @@ it("forwards Parallel source, fetch, and excerpt settings to its current endpoin
     },
   ]);
 });
-it("lets Tavily serialize enum controls and retains the requested answer", async () => {
+it("lets Tavily serialize enum controls and retains the requested answer and usage", async () => {
   response = {
     results: [{ title: "Source", url: "https://example.com", content: "Text" }],
     answer: "Answer",
     images: [],
+    usage: { credits: 2 },
     response_time: 0.1,
   };
   const result = await client("tavily").search({
@@ -200,6 +201,12 @@ it("lets Tavily serialize enum controls and retains the requested answer", async
       searchDepth: "fast",
       includeAnswer: "advanced",
       includeRawContent: "markdown",
+      includeDomainsMode: "prefer",
+      maxAgeHours: 12,
+      safeSearch: true,
+      includePublishedDate: true,
+      filterByPublishedDate: true,
+      includeUsage: true,
     },
   });
   expect(result.status).toBe("ok");
@@ -209,11 +216,19 @@ it("lets Tavily serialize enum controls and retains the requested answer", async
       search_depth: "fast",
       include_answer: "advanced",
       include_raw_content: "markdown",
+      include_domains_mode: "prefer",
+      max_age_hours: 12,
+      safe_search: true,
+      include_published_date: true,
+      filter_by_published_date: true,
+      include_usage: true,
     },
   });
   expect(result.results[0]).toMatchObject({
     ok: true,
-    value: { results: [{ metadata: { answer: "Answer" } }] },
+    value: {
+      results: [{ metadata: { answer: "Answer", usage: { credits: 2 } } }],
+    },
   });
 });
 it("forwards Perplexity Sonar retrieval settings separately from the standalone search endpoint", async () => {

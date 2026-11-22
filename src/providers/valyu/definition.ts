@@ -331,7 +331,8 @@ export const valyuProvider = defineProvider({
             description: "Use Valyu fast mode when lower latency is preferred.",
           },
         },
-        description: "Valyu answer options.",
+        description:
+          "Valyu answer options. Deprecated upstream (retires 2026-12-17); prefer Valyu research with mode='instant' or search.",
       },
       retrySafe: false,
     },
@@ -341,6 +342,10 @@ export const valyuProvider = defineProvider({
         properties: {
           mode: {
             anyOf: [
+              {
+                type: "string",
+                const: "instant",
+              },
               {
                 type: "string",
                 const: "fast",
@@ -382,6 +387,10 @@ export const valyuProvider = defineProvider({
                       type: "string",
                       const: "toon",
                     },
+                    {
+                      type: "string",
+                      const: "structured_report",
+                    },
                   ],
                 },
                 {
@@ -393,6 +402,14 @@ export const valyuProvider = defineProvider({
               ],
             },
             description: "Requested Valyu research output formats.",
+          },
+          skills: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+            description:
+              "Skills to enable for this research task (for example 'forecasting').",
           },
           search: {
             type: "object",
