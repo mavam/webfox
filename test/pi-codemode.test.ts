@@ -248,8 +248,9 @@ it("keeps partial and entirely failed batches available as structured values", a
     .filter((block) => block.type === "text")
     .map((block) => block.text);
   const documents = texts
-    .filter((text) => text.startsWith("{"))
-    .map((text) => JSON.parse(text));
+    .flatMap((text) => text.split("\n"))
+    .filter((line) => line.startsWith("{"))
+    .map((line) => JSON.parse(line));
   expect(documents).toHaveLength(2);
   expect(documents[0].status).toBe("partial");
   expect(
