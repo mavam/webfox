@@ -13,7 +13,13 @@ import type {
 } from "../contract.js";
 import type { Valyu } from "./types.js";
 
-import { formatJson, omittedContentsError, trimSnippet } from "../shared.js";
+import {
+  ambiguousContentsError,
+  formatJson,
+  omittedContentsError,
+  pickSingleUrlOutcome,
+  trimSnippet,
+} from "../shared.js";
 
 const valyuImplementation = {
   async search(
@@ -81,11 +87,10 @@ const valyuImplementation = {
       throw new Error(finalResponse.error || "contents failed");
     }
 
-    const results = finalResponse.results ?? [];
-    const result = results.find((entry) => entry.url === url) ?? results[0];
-    if (!result) {
-      throw omittedContentsError();
-    }
+    const outcome = pickSingleUrlOutcome(url, finalResponse.results ?? []);
+    if (outcome.kind === "omitted") throw omittedContentsError();
+    if (outcome.kind === "ambiguous") throw ambiguousContentsError();
+    const result = outcome.value;
 
     if (result.status === "failed" || result.status === "not_found") {
       throw new WebfoxError(

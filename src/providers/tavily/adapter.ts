@@ -10,7 +10,12 @@ import { WebfoxError } from "../../errors.js";
 import type { ProviderContext, SearchResponse } from "../contract.js";
 import type { Tavily } from "./types.js";
 
-import { omittedContentsError, trimSnippet } from "../shared.js";
+import {
+  ambiguousContentsError,
+  omittedContentsError,
+  pickSingleUrlOutcome,
+  trimSnippet,
+} from "../shared.js";
 
 const tavilyImplementation = {
   async search(
@@ -51,10 +56,13 @@ const tavilyImplementation = {
       ...(options ?? {}),
     });
 
-    const result =
-      response.results.find((entry) => entry.url === url) ??
-      response.results[0];
-    if (result) {
+    const outcome = pickSingleUrlOutcome(
+      url,
+      response.results,
+      response.failedResults,
+    );
+    if (outcome.kind === "result") {
+      const result = outcome.value;
       return {
         url: result.url,
         ...(typeof result.rawContent === "string"
@@ -63,15 +71,14 @@ const tavilyImplementation = {
         metadata: buildExtractMetadata(response, result),
       };
     }
-
-    const failedResult =
-      response.failedResults.find((entry) => entry.url === url) ??
-      response.failedResults[0];
-    if (failedResult) {
+    if (outcome.kind === "error") {
       throw new WebfoxError(
         "PROVIDER_FAILURE",
-        failedResult.error || "Content extraction failed.",
+        outcome.value.error || "Content extraction failed.",
       );
+    }
+    if (outcome.kind === "ambiguous") {
+      throw ambiguousContentsError();
     }
 
     throw omittedContentsError();

@@ -96,6 +96,10 @@ export const adapter = {
       invalid(
         "Provider returned missing, duplicate, or invalid contents input indexes.",
       );
+    const url = string(answer.url, "url");
+    if (answer.content !== undefined) string(answer.content, "content");
+    if (answer.metadata !== undefined)
+      object(answer.metadata, "metadata must be an object");
     if (answer.error !== undefined) {
       const error = parseError(answer.error);
       throw new WebfoxError(error.code, error.message, {
@@ -103,15 +107,13 @@ export const adapter = {
       });
     }
     return {
-      url: string(answer.url, "url"),
+      url,
       ...(answer.content === undefined
         ? {}
-        : { content: string(answer.content, "content") }),
+        : { content: answer.content as string }),
       ...(answer.summary === undefined ? {} : { summary: answer.summary }),
       ...(answer.metadata
-        ? {
-            metadata: object(answer.metadata, "metadata must be an object"),
-          }
+        ? { metadata: answer.metadata as Record<string, unknown> }
         : {}),
     };
   },

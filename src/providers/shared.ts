@@ -7,6 +7,42 @@ export function omittedContentsError(): WebfoxError {
   );
 }
 
+export function ambiguousContentsError(): WebfoxError {
+  return new WebfoxError(
+    "PROVIDER_FAILURE",
+    "The provider returned ambiguous results for this URL.",
+  );
+}
+
+/**
+ * Resolve a single requested URL against a batch-shaped extraction response.
+ * Prefers an exact result match, then an exact error match, then a sole
+ * candidate (for redirects), and rejects ambiguous multi-item payloads.
+ */
+export function pickSingleUrlOutcome<
+  TResult extends { url?: string },
+  TError extends { url?: string } = never,
+>(
+  url: string,
+  results: readonly TResult[],
+  errors: readonly TError[] = [],
+):
+  | { kind: "result"; value: TResult }
+  | { kind: "error"; value: TError }
+  | { kind: "omitted" }
+  | { kind: "ambiguous" } {
+  const exactResult = results.find((entry) => entry.url === url);
+  if (exactResult) return { kind: "result", value: exactResult };
+  const exactError = errors.find((entry) => entry.url === url);
+  if (exactError) return { kind: "error", value: exactError };
+  if (results.length === 1 && errors.length === 0)
+    return { kind: "result", value: results[0] };
+  if (errors.length === 1 && results.length === 0)
+    return { kind: "error", value: errors[0] };
+  if (results.length === 0 && errors.length === 0) return { kind: "omitted" };
+  return { kind: "ambiguous" };
+}
+
 export function trimSnippet(
   input: string | undefined,
   maxLength = 300,

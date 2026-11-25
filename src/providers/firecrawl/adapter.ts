@@ -77,7 +77,13 @@ const firecrawlImplementation = {
       context.signal,
       "Firecrawl scrape failed.",
     );
-    const document = (asRecord(response.data) ?? {}) as FirecrawlDocument;
+    const document = asRecord(response.data) as FirecrawlDocument | undefined;
+    if (!document) {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        "Firecrawl returned an invalid scrape response.",
+      );
+    }
     const content = getDocumentContent(document);
     return {
       url,

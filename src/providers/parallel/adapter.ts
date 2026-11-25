@@ -5,7 +5,13 @@ import { WebfoxError } from "../../errors.js";
 import type { ProviderContext, SearchResponse } from "../contract.js";
 import type { Parallel } from "./types.js";
 
-import { formatJson, omittedContentsError, trimSnippet } from "../shared.js";
+import {
+  ambiguousContentsError,
+  formatJson,
+  omittedContentsError,
+  pickSingleUrlOutcome,
+  trimSnippet,
+} from "../shared.js";
 
 const parallelImplementation = {
   async search(
@@ -49,10 +55,13 @@ const parallelImplementation = {
       buildRequestOptions(context),
     )) as unknown as ParallelExtractResponse;
 
-    const result =
-      response.results.find((entry) => entry.url === url) ??
-      response.results[0];
-    if (result) {
+    const outcome = pickSingleUrlOutcome(
+      url,
+      response.results,
+      response.errors,
+    );
+    if (outcome.kind === "result") {
+      const result = outcome.value;
       return {
         url: result.url,
         content:
@@ -60,11 +69,11 @@ const parallelImplementation = {
         metadata: result as unknown as Record<string, unknown>,
       };
     }
-
-    const error =
-      response.errors.find((entry) => entry.url === url) ?? response.errors[0];
-    if (error) {
-      throw new WebfoxError("PROVIDER_FAILURE", formatJson(error));
+    if (outcome.kind === "error") {
+      throw new WebfoxError("PROVIDER_FAILURE", formatJson(outcome.value));
+    }
+    if (outcome.kind === "ambiguous") {
+      throw ambiguousContentsError();
     }
 
     throw omittedContentsError();

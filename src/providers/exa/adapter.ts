@@ -7,9 +7,11 @@ import type {
 import type { Exa } from "./types.js";
 
 import {
+  ambiguousContentsError,
   formatJson,
   joinUrl,
   omittedContentsError,
+  pickSingleUrlOutcome,
   requestJson,
   trimSnippet,
 } from "../shared.js";
@@ -78,10 +80,10 @@ const exaImplementation = {
       context,
     )) as ExaSearchResponse;
 
-    const result = response.results?.[0];
-    if (!result) {
-      throw omittedContentsError();
-    }
+    const outcome = pickSingleUrlOutcome(url, response.results ?? []);
+    if (outcome.kind === "omitted") throw omittedContentsError();
+    if (outcome.kind === "ambiguous") throw ambiguousContentsError();
+    const result = outcome.value;
 
     return {
       url: typeof result.url === "string" ? result.url : url,
