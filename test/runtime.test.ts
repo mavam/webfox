@@ -169,31 +169,57 @@ it("never retries research creation and preserves explicit terminal errors", asy
   ).rejects.toMatchObject({ code: "CANCELLED" });
 });
 
-it("redacts secrets from other configured providers during execution", async () => {
+it("redacts secrets from other configured providers, credential defaults, and cached commands without corrupting response keys", async () => {
   const otherSecret = "sk-unrelated-provider-secret-999";
-  vi.stubGlobal(
-    "fetch",
-    vi
-      .fn()
-      .mockResolvedValue(
-        new Response(`upstream leaked ${otherSecret}`, { status: 500 }),
-      ),
-  );
+  const accountId = "cf-acct-secret-777";
+  const commandSecret = "cmd-resolved-secret-555";
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ web: { results: [] } }))
+    .mockResolvedValueOnce(
+      new Response(`leaked ${otherSecret} ${accountId} ${commandSecret}`, {
+        status: 500,
+      }),
+    );
+  vi.stubGlobal("fetch", fetchMock);
   const client = createWebfox({
-    config: {},
+    config: {
+      providers: {
+        brave: {
+          credentials: {
+            search: {
+              command: [
+                process.execPath,
+                "-e",
+                `process.stdout.write(${JSON.stringify(commandSecret)})`,
+              ],
+            },
+          },
+        },
+        custom: {
+          options: {
+            search: { value: "results" },
+          },
+        },
+      },
+    },
     env: {
-      BRAVE_SEARCH_API_KEY: "brave-secret",
       OPENAI_API_KEY: otherSecret,
+      CLOUDFLARE_ACCOUNT_ID: accountId,
+      OLLAMA_API_KEY: "ollama-key",
     },
   });
-  const result = await client.search({
-    provider: "brave",
-    queries: ["test"],
-  });
-  expect(result.results[0]).toMatchObject({ ok: false });
-  if (result.results[0].ok) throw new Error("expected failure");
-  expect(result.results[0].error.message).not.toContain(otherSecret);
-  expect(result.results[0].error.message).toContain("[redacted]");
+  const first = await client.search({ provider: "brave", queries: ["ok"] });
+  expect(first.status).toBe("ok");
+  expect(first.results[0]).toMatchObject({ ok: true, value: { results: [] } });
+
+  const second = await client.search({ provider: "ollama", queries: ["test"] });
+  expect(second.results[0]).toMatchObject({ ok: false });
+  if (second.results[0].ok) throw new Error("expected failure");
+  expect(second.results[0].error.message).not.toContain(otherSecret);
+  expect(second.results[0].error.message).not.toContain(accountId);
+  expect(second.results[0].error.message).not.toContain(commandSecret);
+  expect(second.results[0].error.message).toContain("[redacted]");
 });
 
 it("clamps maxResults to provider capability limits centrally", async () => {

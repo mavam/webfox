@@ -30,20 +30,33 @@ export function createWebfox(options: CreateWebfoxOptions = {}): WebfoxClient {
     : loadConfigSync({ configPath: options.configPath, env, cwd });
   validateConfiguredOptions(config);
   const outward = new OutwardBoundary();
-  // Inspection can redact known values without evaluating credential commands.
-  const collect = (value: unknown): void => {
-    if (!value || typeof value !== "object") return;
-    if ("value" in value && typeof value.value === "string")
-      outward.addSecret(value.value);
-    if ("env" in value && typeof value.env === "string" && env[value.env])
-      outward.addSecret(env[value.env]!);
-    for (const child of Object.values(value)) collect(child);
+  // Collect known secrets from declared credential sources, credential
+  // defaults, and custom-command env maps without evaluating commands or
+  // walking arbitrary provider options.
+  const addSource = (source: unknown): void => {
+    if (!source || typeof source !== "object") return;
+    if ("value" in source && typeof source.value === "string")
+      outward.addSecret(source.value);
+    if ("env" in source && typeof source.env === "string" && env[source.env])
+      outward.addSecret(env[source.env]!);
   };
-  collect(config.providers);
-  for (const definition of Object.values(providers))
-    for (const credential of definition.credentials)
+  for (const definition of Object.values(providers)) {
+    const stored = config.providers?.[definition.id];
+    for (const credential of definition.credentials) {
+      addSource(stored?.credentials?.[credential.name]);
       if (env[credential.environmentVariable])
         outward.addSecret(env[credential.environmentVariable]!);
+    }
+    for (const [key, fallback] of Object.entries(
+      definition.credentialDefaults,
+    )) {
+      addSource((stored as Record<string, unknown> | undefined)?.[key]);
+      addSource(fallback);
+    }
+    for (const command of Object.values(stored?.commands ?? {})) {
+      for (const source of Object.values(command?.env ?? {})) addSource(source);
+    }
+  }
   const runtime = new ExecutionRuntime(cwd, env, outward);
   const configured = (
     definition: ProviderDefinition,

@@ -44,7 +44,7 @@ export class ExecutionRuntime {
   constructor(
     private readonly cwd: string,
     private readonly env: Record<string, string | undefined>,
-    private readonly baseOutward: OutwardBoundary = new OutwardBoundary(),
+    private readonly outward: OutwardBoundary = new OutwardBoundary(),
   ) {
     this.credentials = new CredentialResolver(cwd, env);
   }
@@ -70,12 +70,14 @@ export class ExecutionRuntime {
         "timeoutMs must be a positive integer no larger than 2147483647.",
       );
     const scope = deadline(timeoutMs, request.signal);
-    const outward = this.baseOutward.clone();
+    // Share the client-scoped secret registry so command credentials resolved
+    // by one execution remain redacted across subsequent executions too.
+    const outward = this.outward;
     let active = true;
     const notify = (event: ProgressEvent) => {
       if (!active) return;
       try {
-        request.onProgress?.(outward.value(event));
+        request.onProgress?.(outward.progress(event));
       } catch {
         // Observers must not interfere with execution or completion updates.
       }
@@ -194,7 +196,7 @@ export class ExecutionRuntime {
           return result;
         },
       );
-      return outward.value({
+      return outward.document({
         schemaVersion: 1,
         capability,
         provider: definition.id,
@@ -203,7 +205,7 @@ export class ExecutionRuntime {
       });
     } catch (error) {
       if (scope.signal.aborted)
-        return outward.value({
+        return outward.document({
           schemaVersion: 1,
           capability,
           provider: definition.id,
