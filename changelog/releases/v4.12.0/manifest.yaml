@@ -1,0 +1,10 @@
+created: 2026-11-25
+title: Zero provider libraries and Pi 1.6 support
+intro: >-
+  Webfox now calls every built-in provider directly without third-party provider libraries,
+  shrinking standalone installs and enabling cancellation for Tavily and Valyu. This
+  release also updates the Pi and Pi Durable adapters for version 1.6, adds new Tavily
+  and Valyu options, and hardens secret redaction across providers.
+source:
+  mode: sync-stable-queue
+  previous_stable: v4.11.0
