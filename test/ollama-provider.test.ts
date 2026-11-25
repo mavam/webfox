@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ContentsResponse } from "../src/contents.js";
+import type { ContentsAnswer } from "../src/domain.js";
 import { adapter } from "../src/providers/ollama/adapter.js";
 import { ollamaProvider } from "../src/providers/ollama/definition.js";
 import { createWebfox } from "../src/index.js";
-import type { Ollama } from "../src/providers/ollama/types.js";
 import type {
+  HttpProvider as Ollama,
   ProviderContext,
   SearchResponse,
 } from "../src/providers/contract.js";
@@ -30,11 +30,11 @@ async function searchOllama(
 }
 
 async function fetchOllama(
-  urls: string[],
+  url: string,
   config: Ollama,
   context: ProviderContext,
-): Promise<ContentsResponse> {
-  return adapter.contents({ capability: "contents", urls }, config, context);
+): Promise<ContentsAnswer> {
+  return adapter.contents({ capability: "contents", url }, config, context);
 }
 
 describe("ollamaProvider", () => {
@@ -65,7 +65,7 @@ describe("ollamaProvider", () => {
     const config = { credentials: { api: "test-key" } };
     const context = { cwd: process.cwd(), signal };
     await searchOllama("test", 5, config, context);
-    await fetchOllama(["https://example.com"], config, context);
+    await fetchOllama("https://example.com", config, context);
     for (const [, options] of fetchMock.mock.calls)
       expect(options.signal).toBe(signal);
   });
@@ -77,7 +77,7 @@ describe("ollamaProvider", () => {
       searchOllama("test", 5, {}, { cwd: process.cwd() }),
     ).rejects.toThrow("missing an API key");
     await expect(
-      fetchOllama(["https://example.com"], {}, { cwd: process.cwd() }),
+      fetchOllama("https://example.com", {}, { cwd: process.cwd() }),
     ).rejects.toThrow("missing an API key");
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -125,7 +125,6 @@ describe("ollamaProvider", () => {
     );
 
     expect(response).toEqual({
-      provider: "ollama",
       results: [
         {
           title: "Ollama",
@@ -181,7 +180,7 @@ describe("ollamaProvider", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     const response = await fetchOllama(
-      ["https://ollama.com"],
+      "https://ollama.com",
       {
         credentials: { api: "test-key" },
       },
@@ -200,19 +199,13 @@ describe("ollamaProvider", () => {
       }),
     );
 
-    expect(response).toMatchObject({
-      provider: "ollama",
-      answers: [
-        {
-          inputIndex: 0,
-          url: "https://ollama.com",
-          content: "Cloud models are now available in Ollama\n\nExplore models",
-          metadata: {
-            title: "Ollama",
-            links: ["https://ollama.com/models"],
-          },
-        },
-      ],
+    expect(response).toEqual({
+      url: "https://ollama.com",
+      content: "Cloud models are now available in Ollama\n\nExplore models",
+      metadata: {
+        title: "Ollama",
+        links: ["https://ollama.com/models"],
+      },
     });
   });
 
@@ -240,7 +233,7 @@ describe("ollamaProvider", () => {
     );
   });
 
-  it("handles failed fetch requests per URL", async () => {
+  it("surfaces failed fetch requests", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ message: "invalid key" }), {
         status: 401,
@@ -249,28 +242,17 @@ describe("ollamaProvider", () => {
     );
     globalThis.fetch = fetchMock as typeof fetch;
 
-    const response = await fetchOllama(
-      ["https://ollama.com"],
-      {
-        credentials: { api: "test-key" },
-      },
-      { cwd: process.cwd() },
-    );
-
-    expect(response).toMatchObject({
-      provider: "ollama",
-      answers: [
+    await expect(
+      fetchOllama(
+        "https://ollama.com",
         {
-          inputIndex: 0,
-          url: "https://ollama.com",
-          error: {
-            code: "PROVIDER_FAILURE",
-            message:
-              "Ollama API request failed (401 Unauthorized): invalid key",
-          },
+          credentials: { api: "test-key" },
         },
-      ],
-    });
+        { cwd: process.cwd() },
+      ),
+    ).rejects.toThrow(
+      /Ollama API request failed \(401 Unauthorized\): invalid key/,
+    );
   });
 
   it("surfaces Ollama HTTP errors with response details", async () => {

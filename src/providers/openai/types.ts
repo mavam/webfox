@@ -1,4 +1,4 @@
-import type { Provider } from "../contract.js";
+import type { HttpProvider } from "../contract.js";
 export interface OpenAIWebSearchToolOptions {
   externalWebAccess?: boolean;
   searchContextSize?: "low" | "medium" | "high";
@@ -27,6 +27,4 @@ export interface OpenAIResearchOptions extends OpenAIWebSearchToolOptions {
   max_tool_calls?: number;
 }
 
-export interface OpenAI extends Provider {
-  baseUrl?: string;
-}
+export type OpenAI = HttpProvider;

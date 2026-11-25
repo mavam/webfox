@@ -62,7 +62,6 @@ describe("providerHarness(braveProvider)", () => {
       },
     );
     expect(response).toEqual({
-      provider: "brave",
       results: [
         {
           title: "Brave launches news mode",
@@ -323,7 +322,6 @@ describe("providerHarness(braveProvider)", () => {
       },
     });
     expect(response).toEqual({
-      provider: "brave",
       text: "Answer text The Fame",
       sources: [{ url: "https://example.com/source", title: "Example source" }],
       metadata: {

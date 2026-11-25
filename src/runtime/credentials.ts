@@ -30,9 +30,9 @@ export class CredentialResolver {
       credentials: sources,
       commands,
       options: _options,
-      accountId,
-      ...settings
+      ...rest
     } = stored ?? {};
+    const settings = { ...rest } as Record<string, unknown>;
     const credentials: Record<string, string> = {};
     for (const requirement of definition.credentials) {
       if (
@@ -56,8 +56,10 @@ export class CredentialResolver {
     for (const [key, fallback] of Object.entries(
       definition.credentialDefaults,
     )) {
+      const configuredSource = settings[key] as CredentialSource | undefined;
+      delete settings[key];
       const value = await this.resolve(
-        key === "accountId" ? (accountId ?? fallback) : fallback,
+        configuredSource ?? fallback,
         signal,
         outward,
       );

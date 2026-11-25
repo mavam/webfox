@@ -1,13 +1,14 @@
 import PerplexityClient from "@perplexity-ai/perplexity_ai";
 
 import type {
+  HttpProvider,
   ProviderContext,
+  ProviderRequest,
   SearchResponse,
   SourceInput,
   ToolOutput,
 } from "../contract.js";
-import type { Perplexity } from "./types.js";
-import { trimSnippet } from "../shared.js";
+import { requireApiKey, trimSnippet } from "../shared.js";
 
 const DEFAULT_ANSWER_MODEL = "sonar";
 const DEFAULT_RESEARCH_MODEL = "sonar-deep-research";
@@ -24,29 +25,26 @@ type PerplexityForegroundChunk = {
   citations?: Array<string | null> | null;
 };
 
-const perplexityImplementation = {
+export const adapter = {
   async search(
-    query: string,
-    maxResults: number,
-    config: Perplexity,
+    request: ProviderRequest<"search">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
     const client = createClient(config);
-    const request = {
-      ...(options ?? {}),
-      query,
-      max_results: maxResults,
+    const body = {
+      ...(request.options ?? {}),
+      query: request.query,
+      max_results: request.maxResults,
     };
 
     const response = await client.search.create(
-      request as never,
+      body as never,
       buildRequestOptions(context),
     );
 
     return {
-      provider: "perplexity",
-      results: response.results.slice(0, maxResults).map((result) => ({
+      results: response.results.slice(0, request.maxResults).map((result) => ({
         title: result.title,
         url: result.url,
         snippet: trimSnippet(result.snippet),
@@ -64,39 +62,37 @@ const perplexityImplementation = {
   },
 
   async answer(
-    query: string,
-    config: Perplexity,
+    request: ProviderRequest<"answer">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
     return runSilentForegroundChatTool(
-      query,
+      request.query,
       config,
       context,
       DEFAULT_ANSWER_MODEL,
-      options,
+      request.options,
     );
   },
 
   async research(
-    input: string,
-    config: Perplexity,
+    request: ProviderRequest<"research">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
     return runStreamingForegroundChatTool(
-      input,
+      request.input,
       config,
       context,
       DEFAULT_RESEARCH_MODEL,
-      options,
+      request.options,
     );
   },
 };
 
 async function runSilentForegroundChatTool(
   input: string,
-  config: Perplexity,
+  config: HttpProvider,
   context: ProviderContext,
   fallbackModel: string,
   options?: Record<string, unknown>,
@@ -118,7 +114,6 @@ async function runSilentForegroundChatTool(
   const sources = dedupeSources(extractSources(response));
 
   return {
-    provider: "perplexity",
     text: content,
     sources,
   };
@@ -126,7 +121,7 @@ async function runSilentForegroundChatTool(
 
 async function runStreamingForegroundChatTool(
   input: string,
-  config: Perplexity,
+  config: HttpProvider,
   context: ProviderContext,
   fallbackModel: string,
   options?: Record<string, unknown>,
@@ -163,17 +158,13 @@ async function runStreamingForegroundChatTool(
     extractMessageText(lastChunk?.choices?.[0]?.message?.content);
 
   return {
-    provider: "perplexity",
     text: finalText,
     sources: dedupeSources(sources),
   };
 }
 
-function createClient(config: Perplexity): PerplexityClient {
-  const apiKey = config.credentials?.api;
-  if (!apiKey) {
-    throw new Error("is missing an API key");
-  }
+function createClient(config: HttpProvider): PerplexityClient {
+  const apiKey = requireApiKey(config);
 
   return new PerplexityClient({
     maxRetries: 0,
@@ -296,43 +287,3 @@ function buildRequestOptions(
 ): { signal: AbortSignal } | undefined {
   return context.signal ? { signal: context.signal } : undefined;
 }
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: Perplexity,
-    context: ProviderContext,
-  ) {
-    return await perplexityImplementation.search(
-      input.query,
-      input.maxResults,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async answer(
-    input: import("../contract.js").ProviderRequest<"answer">,
-    config: Perplexity,
-    context: ProviderContext,
-  ) {
-    return await perplexityImplementation.answer(
-      input.query,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async research(
-    input: import("../contract.js").ProviderRequest<"research">,
-    config: Perplexity,
-    context: ProviderContext,
-  ) {
-    return await perplexityImplementation.research(
-      input.input,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

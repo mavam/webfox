@@ -76,7 +76,7 @@ describe("Sofya", () => {
     expect(response.results[1].metadata).toEqual({ content: "x".repeat(900) });
   });
 
-  it("fetches each URL and keeps failures with their input", async () => {
+  it("fetches a URL and surfaces per-page errors", async () => {
     const fetch = stubFetch(({ urls }) => {
       const [url] = urls as string[];
       return Response.json({
@@ -96,26 +96,25 @@ describe("Sofya", () => {
       });
     });
 
-    const response = await adapter.contents(
-      {
-        capability: "contents",
-        urls: ["https://example.org", "https://bad.example"],
-      },
+    const page = await adapter.contents(
+      { capability: "contents", url: "https://example.org" },
       config,
       providerContext,
     );
+    await expect(
+      adapter.contents(
+        { capability: "contents", url: "https://bad.example" },
+        config,
+        providerContext,
+      ),
+    ).rejects.toThrow("HTTP 404");
 
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch.mock.calls[0][0]).toBe("https://sofya.co/v1/fetch");
-    expect(response.answers[0]).toMatchObject({
-      inputIndex: 0,
+    expect(page).toEqual({
       url: "https://example.org/final",
       content: "# Page",
       metadata: { title: "Page", low_content: false },
-    });
-    expect(response.answers[1]).toMatchObject({
-      inputIndex: 1,
-      error: { message: "HTTP 404" },
     });
   });
 
@@ -218,10 +217,10 @@ describe("Sofya", () => {
       Response.json({ results: [{ url: (urls as string[])[0] }] }),
     );
 
-    const response = await adapter.contents(
+    const page = await adapter.contents(
       {
         capability: "contents",
-        urls: ["https://example.org/"],
+        url: "https://example.org/",
         options: { include_raw_html: true },
       },
       config,
@@ -232,7 +231,7 @@ describe("Sofya", () => {
       include_raw_html: true,
       urls: ["https://example.org/"],
     });
-    expect(response.answers[0]).toMatchObject({
+    expect(page).toEqual({
       url: "https://example.org/",
       content: "",
     });

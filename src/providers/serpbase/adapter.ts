@@ -6,7 +6,12 @@ import type {
   SearchResponse,
   SearchResult,
 } from "../contract.js";
-import { trimSnippet } from "../shared.js";
+import {
+  asRecord,
+  readNonEmptyString as text,
+  requireApiKey,
+  trimSnippet,
+} from "../shared.js";
 import { serpbaseProvider } from "./definition.js";
 import { SERPBASE_MODES, type SerpBase, type SerpBaseMode } from "./types.js";
 
@@ -34,8 +39,7 @@ export const adapter = {
         "SerpBase maps-detail requires a feature_id (0x...:0x...) in each queries entry. First use mode maps and copy the returned feature_id; names, place_id, CID, and Maps URLs are not accepted.",
       );
     }
-    const apiKey = config.credentials?.api;
-    if (!apiKey) throw new Error("SerpBase search is missing an API key");
+    const apiKey = requireApiKey(config, "api", "SerpBase search");
 
     const response = await fetch(
       `${(config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "")}/google/${endpoint.path}`,
@@ -106,7 +110,6 @@ export const adapter = {
       .map((entry) => toSearchResult(entry, searchContext, mode))
       .filter((result): result is SearchResult => result !== undefined);
     return {
-      provider: "serpbase",
       // No upstream count parameter or automatic pagination: one page or place.
       results: results.slice(
         0,
@@ -240,14 +243,4 @@ function isNavigationImage(record: Record<string, unknown>): boolean {
   } catch {
     return false;
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function text(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
 }

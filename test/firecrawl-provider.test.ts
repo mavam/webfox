@@ -145,7 +145,7 @@ describe("providerHarness(firecrawlProvider)", () => {
     });
   });
 
-  it("preserves URL order for contents, merges scrape options, and surfaces per-URL failures", async () => {
+  it("scrapes contents, merges scrape options, formats JSON payloads, and surfaces failures", async () => {
     const calls = stubFetch(({ body: { url } }) => {
       if (url === "https://example.com/a") {
         return {
@@ -180,24 +180,31 @@ describe("providerHarness(firecrawlProvider)", () => {
       };
     });
 
-    const response = await providerHarness(firecrawlProvider).contents(
-      [
-        "https://example.com/a",
-        "https://example.com/b",
-        "https://example.com/c",
-      ],
+    const options = {
+      formats: ["html"],
+      waitFor: 500,
+      mobile: true,
+    };
+    const harness = providerHarness(firecrawlProvider);
+    const pageA = await harness.contents(
+      "https://example.com/a",
       { credentials: { api: "literal-key" } },
       { cwd: process.cwd() },
-      {
-        ...{
-          formats: ["markdown"],
-          waitFor: 500,
-        },
-        ...{
-          formats: ["html"],
-          mobile: true,
-        },
-      },
+      options,
+    );
+    await expect(
+      harness.contents(
+        "https://example.com/b",
+        { credentials: { api: "literal-key" } },
+        { cwd: process.cwd() },
+        options,
+      ),
+    ).rejects.toThrow("blocked by robots");
+    const pageC = await harness.contents(
+      "https://example.com/c",
+      { credentials: { api: "literal-key" } },
+      { cwd: process.cwd() },
+      options,
     );
 
     expect(
@@ -217,37 +224,28 @@ describe("providerHarness(firecrawlProvider)", () => {
         mobile: true,
       })),
     );
-    expect(response.answers).toMatchObject([
-      {
-        inputIndex: 0,
-        url: "https://example.com/a",
-        content: "# Page A\n\nBody A",
-        metadata: {
-          title: "Page A",
-          sourceURL: "https://example.com/a?ref=firecrawl",
-        },
+    expect(pageA).toMatchObject({
+      url: "https://example.com/a",
+      content: "# Page A\n\nBody A",
+      metadata: {
+        title: "Page A",
+        sourceURL: "https://example.com/a?ref=firecrawl",
       },
-      {
-        inputIndex: 1,
-        url: "https://example.com/b",
-        error: { code: "PROVIDER_FAILURE", message: "blocked by robots" },
-      },
-      {
-        inputIndex: 2,
-        url: "https://example.com/c",
-        content: JSON.stringify(
-          {
-            title: "Page C",
-            items: [1, 2, 3],
-          },
-          null,
-          2,
-        ),
-        metadata: {
+    });
+    expect(pageC).toMatchObject({
+      url: "https://example.com/c",
+      content: JSON.stringify(
+        {
           title: "Page C",
+          items: [1, 2, 3],
         },
+        null,
+        2,
+      ),
+      metadata: {
+        title: "Page C",
       },
-    ]);
+    });
   });
 
   it("answers a question about one URL using Firecrawl's question scrape format", async () => {
@@ -307,7 +305,6 @@ describe("providerHarness(firecrawlProvider)", () => {
       },
     ]);
     expect(response).toEqual({
-      provider: "firecrawl",
       text: "The page says Firecrawl supports question scraping.",
       sources: [
         { url: "https://docs.firecrawl.dev/features/scrape#question-format" },

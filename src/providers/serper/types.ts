@@ -1,4 +1,4 @@
-import type { Provider } from "../contract.js";
+import type { HttpProvider } from "../contract.js";
 export const SERPER_SEARCH_MODE_VALUES = {
   search: "search",
   images: "images",
@@ -19,6 +19,4 @@ export const SERPER_SEARCH_MODE_VALUES = {
 export type SerperSearchMode =
   (typeof SERPER_SEARCH_MODE_VALUES)[keyof typeof SERPER_SEARCH_MODE_VALUES];
 
-export interface Serper extends Provider {
-  baseUrl?: string;
-}
+export type Serper = HttpProvider;

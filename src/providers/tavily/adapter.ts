@@ -1,4 +1,3 @@
-import { omittedContents, orderedContents } from "../../contents.js";
 import {
   type TavilyClient,
   type TavilyExtractResponse,
@@ -6,30 +5,38 @@ import {
   tavily,
 } from "@tavily/core";
 
-import type { ContentsResponse } from "../../contents.js";
-import type { ProviderContext, SearchResponse } from "../contract.js";
-import type { Tavily } from "./types.js";
+import type { ContentsAnswer } from "../../domain.js";
+import { WebfoxError } from "../../errors.js";
+import type {
+  HttpProvider,
+  ProviderContext,
+  ProviderRequest,
+  SearchResponse,
+} from "../contract.js";
 
-import { trimSnippet } from "../shared.js";
+import {
+  ambiguousContentsError,
+  omittedContentsError,
+  pickSingleUrlOutcome,
+  requireApiKey,
+  trimSnippet,
+} from "../shared.js";
 
-const tavilyImplementation = {
+export const adapter = {
   async search(
-    query: string,
-    maxResults: number,
-    config: Tavily,
+    request: ProviderRequest<"search">,
+    config: HttpProvider,
     _context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
     const client = createClient(config);
 
-    const response = await client.search(query, {
-      ...(options ?? {}),
-      maxResults,
+    const response = await client.search(request.query, {
+      ...(request.options ?? {}),
+      maxResults: request.maxResults,
     });
 
     return {
-      provider: "tavily",
-      results: response.results.slice(0, maxResults).map((result) => ({
+      results: response.results.slice(0, request.maxResults).map((result) => ({
         title: result.title,
         url: result.url || "",
         snippet: trimSnippet(result.content ?? result.rawContent),
@@ -40,68 +47,48 @@ const tavilyImplementation = {
   },
 
   async contents(
-    urls: string[],
-    config: Tavily,
+    request: ProviderRequest<"contents">,
+    config: HttpProvider,
     _context: ProviderContext,
-    options?: Record<string, unknown>,
-  ): Promise<ContentsResponse> {
+  ): Promise<ContentsAnswer> {
     const client = createClient(config);
 
-    const response = await client.extract(urls, {
-      ...(options ?? {}),
+    const response = await client.extract([request.url], {
+      ...(request.options ?? {}),
     });
 
-    const resultsByUrl = new Map(
-      response.results.map((result) => [result.url, result] as const),
+    const outcome = pickSingleUrlOutcome(
+      request.url,
+      response.results,
+      response.failedResults,
     );
-    const failedResultsByUrl = new Map(
-      response.failedResults.map((result) => [result.url, result] as const),
-    );
+    if (outcome.kind === "result") {
+      const result = outcome.value;
+      return {
+        url: result.url,
+        ...(typeof result.rawContent === "string"
+          ? { content: result.rawContent }
+          : {}),
+        metadata: buildExtractMetadata(response, result),
+      };
+    }
+    if (outcome.kind === "error") {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        outcome.value.error || "Content extraction failed.",
+      );
+    }
+    if (outcome.kind === "ambiguous") {
+      throw ambiguousContentsError();
+    }
 
-    return {
-      provider: "tavily",
-      answers: urls.map((url) => {
-        const result =
-          resultsByUrl.get(url) ??
-          (urls.length === 1 && response.results.length === 1
-            ? response.results[0]
-            : undefined);
-        if (result) {
-          return {
-            url: result.url,
-            ...(typeof result.rawContent === "string"
-              ? { content: result.rawContent }
-              : {}),
-            metadata: buildExtractMetadata(response, result),
-          };
-        }
-
-        const failedResult =
-          failedResultsByUrl.get(url) ??
-          (urls.length === 1 && response.failedResults.length === 1
-            ? response.failedResults[0]
-            : undefined);
-        if (failedResult) {
-          return {
-            url,
-            error: failedResult.error || "Content extraction failed.",
-          };
-        }
-
-        return omittedContents(url);
-      }),
-    };
+    throw omittedContentsError();
   },
 };
 
-function createClient(config: Tavily): TavilyClient {
-  const apiKey = config.credentials?.api;
-  if (!apiKey) {
-    throw new Error("is missing an API key");
-  }
-
+function createClient(config: HttpProvider): TavilyClient {
   return tavily({
-    apiKey,
+    apiKey: requireApiKey(config),
     apiBaseURL: config.baseUrl,
   });
 }
@@ -143,33 +130,3 @@ function buildExtractMetadata(
 
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: Tavily,
-    context: ProviderContext,
-  ) {
-    return await tavilyImplementation.search(
-      input.query,
-      input.maxResults,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async contents(
-    input: import("../contract.js").ProviderRequest<"contents">,
-    config: Tavily,
-    context: ProviderContext,
-  ) {
-    return orderedContents(
-      await tavilyImplementation.contents(
-        input.urls,
-        config,
-        context,
-        input.options,
-      ),
-    );
-  },
-};

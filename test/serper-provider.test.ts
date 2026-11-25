@@ -101,7 +101,6 @@ describe("providerHarness(serperProvider)", () => {
       },
     );
     expect(response).toEqual({
-      provider: "serper",
       results: [
         {
           title: "Serper Docs",
@@ -534,7 +533,6 @@ describe("providerHarness(serperProvider)", () => {
     );
 
     expect(response).toEqual({
-      provider: "serper",
       results: [],
     });
   });

@@ -1,15 +1,22 @@
-import { asWebfoxError, WebfoxError } from "../../errors.js";
-import { orderedContents } from "../../contents.js";
-import type { ContentsResponse } from "../../contents.js";
+import { WebfoxError } from "../../errors.js";
+import type { ContentsAnswer } from "../../domain.js";
 import type {
+  HttpProvider,
   ProviderContext,
+  ProviderRequest,
   SearchResponse,
   SearchResult,
   ToolOutput,
 } from "../contract.js";
-import type { Firecrawl } from "./types.js";
 
-import { formatJson, joinUrl, requestJson, trimSnippet } from "../shared.js";
+import {
+  asRecord,
+  formatJson,
+  joinUrl,
+  readString,
+  requestJson,
+  trimSnippet,
+} from "../shared.js";
 
 type FirecrawlDocument = {
   markdown?: unknown;
@@ -29,41 +36,41 @@ const FIRECRAWL_QUESTION_LIMIT = 10_000;
 
 // Scrape tuning controls shared by `web_contents` (scrape) and `web_answer`.
 
-const firecrawlImplementation = {
+export const adapter = {
   async search(
-    query: string,
-    maxResults: number,
-    config: Firecrawl,
+    request: ProviderRequest<"search">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
-    if (!query.trim()) {
+    if (!request.query.trim()) {
       throw new Error("Query cannot be empty");
     }
     const response = await firecrawlRequest(
       config,
       "/v2/search",
-      { ...(options ?? {}), query, limit: maxResults },
+      {
+        ...(request.options ?? {}),
+        query: request.query,
+        limit: request.maxResults,
+      },
       context.signal,
       "Firecrawl search failed.",
     );
 
     return {
-      provider: "firecrawl",
       results: flattenSearchResults(
         (asRecord(response.data) ?? {}) as FirecrawlSearchData,
-      ).slice(0, maxResults),
+      ).slice(0, request.maxResults),
     };
   },
 
   async contents(
-    urls: string[],
-    config: Firecrawl,
+    request: ProviderRequest<"contents">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
-  ): Promise<ContentsResponse> {
+  ): Promise<ContentsAnswer> {
     // `autoResume` is an SDK-side retry loop, not an API field.
-    const { autoResume: _autoResume, ...callOptions } = options ?? {};
+    const { autoResume: _autoResume, ...callOptions } = request.options ?? {};
     const scrapeOptions = {
       formats: ["markdown"],
       onlyMainContent: true,
@@ -71,53 +78,43 @@ const firecrawlImplementation = {
       ...callOptions,
     };
 
+    const response = await firecrawlRequest(
+      config,
+      "/v2/scrape",
+      { ...scrapeOptions, url: request.url.trim() },
+      context.signal,
+      "Firecrawl scrape failed.",
+    );
+    const document = asRecord(response.data) as FirecrawlDocument | undefined;
+    if (!document) {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        "Firecrawl returned an invalid scrape response.",
+      );
+    }
+    const content = getDocumentContent(document);
     return {
-      provider: "firecrawl",
-      answers: await Promise.all(
-        urls.map(async (url) => {
-          try {
-            const response = await firecrawlRequest(
-              config,
-              "/v2/scrape",
-              { ...scrapeOptions, url: url.trim() },
-              context.signal,
-              "Firecrawl scrape failed.",
-            );
-            const document = (asRecord(response.data) ??
-              {}) as FirecrawlDocument;
-            const content = getDocumentContent(document);
-            return {
-              url,
-              ...(content ? { content } : {}),
-              ...(asRecord(document.metadata)
-                ? {
-                    metadata: document.metadata as Record<string, unknown>,
-                  }
-                : {}),
-            };
-          } catch (error) {
-            return {
-              url,
-              error: asWebfoxError(error).toJSON(),
-            };
+      url: request.url,
+      ...(content ? { content } : {}),
+      ...(asRecord(document.metadata)
+        ? {
+            metadata: document.metadata as Record<string, unknown>,
           }
-        }),
-      ),
+        : {}),
     };
   },
 
   async answer(
-    query: string,
-    config: Firecrawl,
+    request: ProviderRequest<"answer">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
-    const question = validateQuestion(query);
+    const question = validateQuestion(request.query);
 
     const mergedOptions: Record<string, unknown> = {
       onlyMainContent: true,
 
-      ...(options ?? {}),
+      ...(request.options ?? {}),
     };
     const url = validateUrl(mergedOptions.url);
     const scrapeOptions = stripAnswerOnlyOptions(mergedOptions);
@@ -130,7 +127,6 @@ const firecrawlImplementation = {
     );
     const document = getFirecrawlDocument(response);
     return {
-      provider: "firecrawl",
       text: readString(document.answer) ?? "",
       sources: [{ url }],
       metadata: {
@@ -175,7 +171,7 @@ function stripAnswerOnlyOptions(
 }
 
 async function scrapeQuestion(
-  config: Firecrawl,
+  config: HttpProvider,
   url: string,
   question: string,
   options: Record<string, unknown>,
@@ -196,7 +192,7 @@ async function scrapeQuestion(
 
 /** One Firecrawl API call; the runtime owns retries and cancellation. */
 async function firecrawlRequest(
-  config: Firecrawl,
+  config: HttpProvider,
   path: string,
   body: Record<string, unknown>,
   signal: AbortSignal | undefined,
@@ -329,55 +325,3 @@ function getDocumentContent(document: FirecrawlDocument): string | undefined {
     ? JSON.stringify(document.json, null, 2)
     : undefined;
 }
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: Firecrawl,
-    context: ProviderContext,
-  ) {
-    return await firecrawlImplementation.search(
-      input.query,
-      input.maxResults,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async contents(
-    input: import("../contract.js").ProviderRequest<"contents">,
-    config: Firecrawl,
-    context: ProviderContext,
-  ) {
-    return orderedContents(
-      await firecrawlImplementation.contents(
-        input.urls,
-        config,
-        context,
-        input.options,
-      ),
-    );
-  },
-  async answer(
-    input: import("../contract.js").ProviderRequest<"answer">,
-    config: Firecrawl,
-    context: ProviderContext,
-  ) {
-    return await firecrawlImplementation.answer(
-      input.query,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

@@ -95,66 +95,70 @@ describe("providerHarness(tavilyProvider)", () => {
     ]);
   });
 
-  it("preserves URL order for contents and surfaces failed extractions", async () => {
-    extractMock.mockResolvedValue({
-      results: [
-        {
-          url: "https://example.com/b",
-          title: "Page B",
-          rawContent: "Body B",
-          images: ["https://example.com/image.png"],
-          favicon: "https://example.com/favicon.ico",
-        },
-      ],
-      failedResults: [
-        {
-          url: "https://example.com/a",
-          error: "blocked",
-        },
-      ],
-      responseTime: 2.5,
-      requestId: "extract-123",
-    });
+  it("extracts page contents with metadata and surfaces failed extractions", async () => {
+    extractMock
+      .mockResolvedValueOnce({
+        results: [
+          {
+            url: "https://example.com/b",
+            title: "Page B",
+            rawContent: "Body B",
+            images: ["https://example.com/image.png"],
+            favicon: "https://example.com/favicon.ico",
+          },
+        ],
+        failedResults: [],
+        responseTime: 2.5,
+        requestId: "extract-123",
+      })
+      .mockResolvedValueOnce({
+        results: [],
+        failedResults: [
+          {
+            url: "https://example.com/a",
+            error: "blocked",
+          },
+        ],
+        responseTime: 1.2,
+        requestId: "extract-124",
+      });
 
-    const response = await providerHarness(tavilyProvider).contents(
-      ["https://example.com/a", "https://example.com/b"],
+    const page = await providerHarness(tavilyProvider).contents(
+      "https://example.com/b",
       { credentials: { api: "literal-key" } },
       { cwd: process.cwd() },
-      {
-        ...{
-          format: "markdown",
-        },
-        ...{
-          includeImages: true,
-        },
-      },
-    );
-
-    expect(extractMock).toHaveBeenCalledWith(
-      ["https://example.com/a", "https://example.com/b"],
       {
         format: "markdown",
         includeImages: true,
       },
     );
-    expect(response.answers).toMatchObject([
-      {
-        inputIndex: 0,
-        url: "https://example.com/a",
-        error: { code: "PROVIDER_FAILURE", message: "blocked" },
+
+    expect(extractMock).toHaveBeenCalledWith(["https://example.com/b"], {
+      format: "markdown",
+      includeImages: true,
+    });
+    expect(page).toEqual({
+      url: "https://example.com/b",
+      content: "Body B",
+      metadata: {
+        title: "Page B",
+        images: ["https://example.com/image.png"],
+        favicon: "https://example.com/favicon.ico",
+        requestId: "extract-123",
+        responseTime: 2.5,
       },
-      {
-        inputIndex: 1,
-        url: "https://example.com/b",
-        content: "Body B",
-        metadata: {
-          title: "Page B",
-          images: ["https://example.com/image.png"],
-          favicon: "https://example.com/favicon.ico",
-          requestId: "extract-123",
-          responseTime: 2.5,
+    });
+
+    await expect(
+      providerHarness(tavilyProvider).contents(
+        "https://example.com/a",
+        { credentials: { api: "literal-key" } },
+        { cwd: process.cwd() },
+        {
+          format: "markdown",
+          includeImages: true,
         },
-      },
-    ]);
+      ),
+    ).rejects.toThrow("blocked");
   });
 });

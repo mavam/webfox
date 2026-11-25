@@ -1,7 +1,6 @@
 import { asWebfoxError, WebfoxError } from "../errors.js";
 import type {
   ProviderContext,
-  ProviderId,
   ResearchJob,
   ResearchPollResult,
   ToolOutput,
@@ -15,14 +14,12 @@ export { sleep } from "./lifecycle.js";
  */
 export async function executeAsyncResearch({
   providerLabel,
-  providerId,
   context,
   pollIntervalMs = 3000,
   start,
   poll,
 }: {
   providerLabel: string;
-  providerId: ProviderId;
   context: ProviderContext;
   pollIntervalMs?: number;
   start: (context: ProviderContext) => Promise<ResearchJob>;
@@ -69,8 +66,7 @@ export async function executeAsyncResearch({
     }
     // Terminal status is represented by the final result, not another
     // running/progress line immediately before a success or error message.
-    if (result.status === "completed")
-      return result.output ?? { provider: providerId, text: "" };
+    if (result.status === "completed") return result.output ?? { text: "" };
     if (result.status === "failed" || result.status === "cancelled")
       throw new WebfoxError(
         result.status === "cancelled" ? "CANCELLED" : "PROVIDER_FAILURE",

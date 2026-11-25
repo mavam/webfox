@@ -1,4 +1,107 @@
 import { httpError, WebfoxError } from "../errors.js";
+import type { Provider } from "./contract.js";
+
+export function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+export function readString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+export function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
+}
+
+export function readInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value)
+    ? value
+    : undefined;
+}
+
+export function readPositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
+}
+
+export function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const strings = value.filter(
+    (item): item is string => typeof item === "string" && item.trim() !== "",
+  );
+  return strings.length > 0 ? strings : undefined;
+}
+
+export function readStringUnion<const TValue extends string>(
+  value: unknown,
+  values: readonly TValue[],
+): TValue | undefined {
+  return typeof value === "string" && values.includes(value as TValue)
+    ? (value as TValue)
+    : undefined;
+}
+
+export function requireApiKey(
+  config: Provider,
+  key = "api",
+  label?: string,
+): string {
+  const value = config.credentials?.[key];
+  if (!value) {
+    throw new Error(
+      label ? `${label} is missing an API key` : "is missing an API key",
+    );
+  }
+  return value;
+}
+
+export function omittedContentsError(): WebfoxError {
+  return new WebfoxError(
+    "PROVIDER_FAILURE",
+    "The provider omitted a result for this URL.",
+  );
+}
+
+export function ambiguousContentsError(): WebfoxError {
+  return new WebfoxError(
+    "PROVIDER_FAILURE",
+    "The provider returned ambiguous results for this URL.",
+  );
+}
+
+/**
+ * Resolve a single requested URL against a batch-shaped extraction response.
+ * Prefers an exact result match, then an exact error match, then a sole
+ * candidate (for redirects), and rejects ambiguous multi-item payloads.
+ */
+export function pickSingleUrlOutcome<
+  TResult extends { url?: string },
+  TError extends { url?: string } = never,
+>(
+  url: string,
+  results: readonly TResult[],
+  errors: readonly TError[] = [],
+):
+  | { kind: "result"; value: TResult }
+  | { kind: "error"; value: TError }
+  | { kind: "omitted" }
+  | { kind: "ambiguous" } {
+  const exactResult = results.find((entry) => entry.url === url);
+  if (exactResult) return { kind: "result", value: exactResult };
+  const exactError = errors.find((entry) => entry.url === url);
+  if (exactError) return { kind: "error", value: exactError };
+  if (results.length === 1 && errors.length === 0)
+    return { kind: "result", value: results[0] };
+  if (errors.length === 1 && results.length === 0)
+    return { kind: "error", value: errors[0] };
+  if (results.length === 0 && errors.length === 0) return { kind: "omitted" };
+  return { kind: "ambiguous" };
+}
 
 export function trimSnippet(
   input: string | undefined,

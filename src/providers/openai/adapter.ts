@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { executeAsyncResearch } from "../../runtime/polling.js";
 import type {
   ProviderContext,
+  ProviderRequest,
   ResearchJob,
   ResearchPollResult,
   SearchResponse,
@@ -16,7 +17,15 @@ import type {
   OpenAIWebSearchToolOptions,
 } from "./types.js";
 
-import { trimSnippet } from "../shared.js";
+import {
+  readInteger,
+  readNonEmptyString,
+  readPositiveInteger,
+  readStringArray,
+  readStringUnion,
+  requireApiKey,
+  trimSnippet,
+} from "../shared.js";
 
 const DEFAULT_SEARCH_MODEL = "gpt-4.1";
 const DEFAULT_ANSWER_MODEL = "gpt-4.1";
@@ -75,32 +84,33 @@ interface OpenAIResponseLike {
   }>;
 }
 
-const openaiImplementation = {
+export const adapter = {
   async search(
-    query: string,
-    maxResults: number,
+    request: ProviderRequest<"search">,
     config: OpenAIConfig,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
     const client = createClient(config);
     const response = (await client.responses.create(
-      buildOpenAISearchRequest(query, maxResults, options),
+      buildOpenAISearchRequest(
+        request.query,
+        request.maxResults,
+        request.options,
+      ),
       buildRequestOptions(context.signal, context.idempotencyKey),
     )) as OpenAIResponseLike;
 
-    return parseSearchResponse(response, maxResults);
+    return parseSearchResponse(response, request.maxResults);
   },
 
   async answer(
-    query: string,
+    request: ProviderRequest<"answer">,
     config: OpenAIConfig,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
     const client = createClient(config);
     const response = (await client.responses.create(
-      buildOpenAIAnswerRequest(query, options),
+      buildOpenAIAnswerRequest(request.query, request.options),
       buildRequestOptions(context.signal, context.idempotencyKey),
     )) as OpenAIResponseLike;
 
@@ -108,96 +118,84 @@ const openaiImplementation = {
   },
 
   async research(
-    input: string,
+    request: ProviderRequest<"research">,
     config: OpenAIConfig,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
     return await executeAsyncResearch({
       providerLabel: "OpenAI",
-      providerId: "openai",
       context,
       start: (researchContext) =>
-        openaiImplementation.startResearch(
-          input,
-          config,
-          researchContext,
-          options,
-        ),
-      poll: (id, researchContext) =>
-        openaiImplementation.pollResearch(id, config, researchContext, options),
+        startResearch(request.input, config, researchContext, request.options),
+      poll: (id, researchContext) => pollResearch(id, config, researchContext),
     });
-  },
-
-  async startResearch(
-    input: string,
-    config: OpenAIConfig,
-    context: ProviderContext,
-    options?: Record<string, unknown>,
-  ): Promise<ResearchJob> {
-    const client = createClient(config);
-    const response = (await client.responses.create(
-      buildOpenAIResearchRequest(input, options),
-      buildRequestOptions(context.signal, context.idempotencyKey),
-    )) as OpenAIResponseLike;
-
-    return { id: response.id };
-  },
-
-  async pollResearch(
-    id: string,
-    config: OpenAIConfig,
-    context: ProviderContext,
-    _options?: Record<string, unknown>,
-  ): Promise<ResearchPollResult> {
-    const client = createClient(config);
-    const response = (await client.responses.retrieve(
-      id,
-      undefined,
-      buildRequestOptions(context.signal),
-    )) as OpenAIResponseLike;
-    const status = response.status ?? "completed";
-
-    if (status === "completed") {
-      return {
-        status: "completed",
-        output: formatResponseOutput(response, "research"),
-      };
-    }
-
-    if (status === "failed") {
-      return {
-        status: "failed",
-        error: response.error?.message ?? "research failed",
-      };
-    }
-
-    if (status === "cancelled") {
-      return {
-        status: "cancelled",
-        error: "research was canceled",
-      };
-    }
-
-    if (status === "incomplete") {
-      return {
-        status: "failed",
-        error: formatIncompleteError(response, "research"),
-      };
-    }
-
-    return {
-      status: "in_progress",
-      statusText: status,
-    };
   },
 };
 
-function createClient(config: OpenAIConfig): OpenAI {
-  const apiKey = config.credentials?.api;
-  if (!apiKey) {
-    throw new Error("is missing an API key");
+async function startResearch(
+  input: string,
+  config: OpenAIConfig,
+  context: ProviderContext,
+  options?: Record<string, unknown>,
+): Promise<ResearchJob> {
+  const client = createClient(config);
+  const response = (await client.responses.create(
+    buildOpenAIResearchRequest(input, options),
+    buildRequestOptions(context.signal, context.idempotencyKey),
+  )) as OpenAIResponseLike;
+
+  return { id: response.id };
+}
+
+async function pollResearch(
+  id: string,
+  config: OpenAIConfig,
+  context: ProviderContext,
+): Promise<ResearchPollResult> {
+  const client = createClient(config);
+  const response = (await client.responses.retrieve(
+    id,
+    undefined,
+    buildRequestOptions(context.signal),
+  )) as OpenAIResponseLike;
+  const status = response.status ?? "completed";
+
+  if (status === "completed") {
+    return {
+      status: "completed",
+      output: formatResponseOutput(response),
+    };
   }
+
+  if (status === "failed") {
+    return {
+      status: "failed",
+      error: response.error?.message ?? "research failed",
+    };
+  }
+
+  if (status === "cancelled") {
+    return {
+      status: "cancelled",
+      error: "research was canceled",
+    };
+  }
+
+  if (status === "incomplete") {
+    return {
+      status: "failed",
+      error: formatIncompleteError(response, "research"),
+    };
+  }
+
+  return {
+    status: "in_progress",
+    statusText: status,
+  };
+}
+
+function createClient(config: OpenAIConfig): OpenAI {
+  const apiKey = requireApiKey(config);
 
   const baseUrl = config.baseUrl;
 
@@ -442,7 +440,6 @@ function parseSearchResponse(
 
   const payload = parseSearchPayload(response.output_text);
   return {
-    provider: "openai",
     results: payload.sources.slice(0, maxResults).map((source) => ({
       title: source.title.trim(),
       url: source.url.trim(),
@@ -458,7 +455,7 @@ function ensureCompletedResponse(
   const status = response.status ?? "completed";
 
   if (status === "completed") {
-    return formatResponseOutput(response, operation);
+    return formatResponseOutput(response);
   }
 
   if (status === "failed") {
@@ -476,13 +473,9 @@ function ensureCompletedResponse(
   throw new Error(`${operation} did not complete (status: ${status})`);
 }
 
-function formatResponseOutput(
-  response: OpenAIResponseLike,
-  operation: "answer" | "research",
-): ToolOutput {
+function formatResponseOutput(response: OpenAIResponseLike): ToolOutput {
   const citations = extractUrlCitations(response);
   return {
-    provider: "openai",
     text: response.output_text ?? "",
     sources: citations.map(({ title, url }) => ({ title, url })),
     metadata: {
@@ -616,31 +609,6 @@ function formatIncompleteError(
   return `${operation} ended incomplete`;
 }
 
-function readNonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : undefined;
-}
-
-function readStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const strings = value.filter(
-    (item): item is string => typeof item === "string" && item.trim() !== "",
-  );
-  return strings.length > 0 ? strings : undefined;
-}
-
-function readStringUnion<const TValue extends string>(
-  value: unknown,
-  values: readonly TValue[],
-): TValue | undefined {
-  return typeof value === "string" && values.includes(value as TValue)
-    ? (value as TValue)
-    : undefined;
-}
-
 function readUserLocation(
   value: unknown,
 ): OpenAISearchOptions["userLocation"] | undefined {
@@ -660,55 +628,3 @@ function readUserLocation(
   };
   return Object.keys(result).length > 0 ? result : undefined;
 }
-
-function readPositiveInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value > 0
-    ? value
-    : undefined;
-}
-
-function readInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value)
-    ? value
-    : undefined;
-}
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: OpenAIConfig,
-    context: ProviderContext,
-  ) {
-    return await openaiImplementation.search(
-      input.query,
-      input.maxResults,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async answer(
-    input: import("../contract.js").ProviderRequest<"answer">,
-    config: OpenAIConfig,
-    context: ProviderContext,
-  ) {
-    return await openaiImplementation.answer(
-      input.query,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async research(
-    input: import("../contract.js").ProviderRequest<"research">,
-    config: OpenAIConfig,
-    context: ProviderContext,
-  ) {
-    return await openaiImplementation.research(
-      input.input,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

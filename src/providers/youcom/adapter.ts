@@ -1,18 +1,21 @@
 import { httpError } from "../../errors.js";
-import type { ProviderContext, SearchResponse } from "../contract.js";
-import { trimSnippet } from "../shared.js";
-import type { Youcom } from "./types.js";
+import type {
+  HttpProvider,
+  ProviderContext,
+  ProviderRequest,
+  SearchResponse,
+} from "../contract.js";
+import { readString as string, requireApiKey, trimSnippet } from "../shared.js";
 
 const DEFAULT_BASE_URL = "https://ydc-index.io";
 
 export const adapter = {
   async search(
-    request: import("../contract.js").ProviderRequest<"search">,
-    config: Youcom,
+    request: ProviderRequest<"search">,
+    config: HttpProvider,
     context: ProviderContext,
   ): Promise<SearchResponse> {
-    const apiKey = config.credentials?.api;
-    if (!apiKey) throw new Error("You.com search is missing an API key");
+    const apiKey = requireApiKey(config, "api", "You.com search");
 
     const options = asRecord(request.options);
 
@@ -65,7 +68,6 @@ export const adapter = {
     }
 
     return {
-      provider: "youcom",
       results: results.slice(0, clamp(request.maxResults, 100)),
     };
   },
@@ -160,10 +162,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function string(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }
 
 async function buildHttpError(response: Response): Promise<string> {

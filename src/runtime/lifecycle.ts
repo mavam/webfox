@@ -1,4 +1,5 @@
 import { WebfoxError } from "../errors.js";
+import { formatDeadline } from "./duration.js";
 
 export function deadline(timeoutMs: number, parent?: AbortSignal) {
   const controller = new AbortController();
@@ -11,7 +12,7 @@ export function deadline(timeoutMs: number, parent?: AbortSignal) {
       controller.abort(
         new WebfoxError(
           "TIMEOUT",
-          `Operation exceeded its ${formatDuration(timeoutMs)} overall deadline.`,
+          `Operation exceeded its ${formatDeadline(timeoutMs)} overall deadline.`,
         ),
       ),
     timeoutMs,
@@ -23,17 +24,6 @@ export function deadline(timeoutMs: number, parent?: AbortSignal) {
       parent?.removeEventListener("abort", abort);
     },
   };
-}
-export function formatDuration(ms: number): string {
-  const [unit, divisor] =
-    ms >= 3_600_000
-      ? (["h", 3_600_000] as const)
-      : ms >= 60_000
-        ? (["m", 60_000] as const)
-        : ms >= 1000
-          ? (["s", 1000] as const)
-          : (["ms", 1] as const);
-  return `${Number((ms / divisor).toFixed(3))}${unit}`;
 }
 export async function withSignal<T>(
   promise: Promise<T>,
