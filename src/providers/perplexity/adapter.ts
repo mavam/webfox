@@ -1,4 +1,4 @@
-import { httpError } from "../../errors.js";
+import { httpError, WebfoxError } from "../../errors.js";
 import type {
   HttpProvider,
   ProviderContext,
@@ -11,6 +11,8 @@ import {
   asRecord,
   describeHttpError,
   joinUrl,
+  mergeHeaders,
+  readNonEmptyString,
   readResponseBody,
   readSseJson,
   requestJson,
@@ -50,11 +52,11 @@ export const adapter = {
     config: HttpProvider,
     context: ProviderContext,
   ): Promise<SearchResponse> {
-    const baseUrl = resolveBaseUrl(config.baseUrl);
+    const baseUrl = resolveBaseUrl(config.baseUrl, context.env);
     const response = (await requestJson(
       joinUrl(baseUrl, "/search"),
       {
-        headers: buildHeaders(config, baseUrl),
+        headers: buildHeaders(config, baseUrl, context.env),
         body: {
           ...(request.options ?? {}),
           query: request.query,
@@ -65,23 +67,28 @@ export const adapter = {
       (payload, reply) => describeHttpError("Perplexity", payload, reply),
     )) as PerplexitySearchResponse;
 
+    if (!Array.isArray(response.results)) {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        "Perplexity returned an invalid search response.",
+      );
+    }
+
     return {
-      results: (response.results ?? [])
-        .slice(0, request.maxResults)
-        .map((result) => ({
-          title: result.title,
-          url: result.url,
-          snippet: trimSnippet(result.snippet),
-          metadata:
-            result.date || result.last_updated
-              ? {
-                  ...(result.date ? { date: result.date } : {}),
-                  ...(result.last_updated
-                    ? { last_updated: result.last_updated }
-                    : {}),
-                }
-              : undefined,
-        })),
+      results: response.results.slice(0, request.maxResults).map((result) => ({
+        title: result.title,
+        url: result.url,
+        snippet: trimSnippet(result.snippet),
+        metadata:
+          result.date || result.last_updated
+            ? {
+                ...(result.date ? { date: result.date } : {}),
+                ...(result.last_updated
+                  ? { last_updated: result.last_updated }
+                  : {}),
+              }
+            : undefined,
+      })),
     };
   },
 
@@ -121,11 +128,11 @@ async function runSilentForegroundChatTool(
   fallbackModel: string,
   options?: Record<string, unknown>,
 ): Promise<ToolOutput> {
-  const baseUrl = resolveBaseUrl(config.baseUrl);
+  const baseUrl = resolveBaseUrl(config.baseUrl, context.env);
   const response = (await requestJson(
     joinUrl(baseUrl, "/chat/completions"),
     {
-      headers: buildHeaders(config, baseUrl),
+      headers: buildHeaders(config, baseUrl, context.env),
       body: {
         ...(options ?? {}),
         messages: [{ role: "user", content: input }],
@@ -153,14 +160,13 @@ async function runStreamingForegroundChatTool(
   fallbackModel: string,
   options?: Record<string, unknown>,
 ): Promise<ToolOutput> {
-  const baseUrl = resolveBaseUrl(config.baseUrl);
+  const baseUrl = resolveBaseUrl(config.baseUrl, context.env);
   const response = await fetch(joinUrl(baseUrl, "/chat/completions"), {
     method: "POST",
-    headers: {
+    headers: mergeHeaders(buildHeaders(config, baseUrl, context.env), {
       Accept: "text/event-stream",
       "Content-Type": "application/json",
-      ...buildHeaders(config, baseUrl),
-    },
+    }),
     body: JSON.stringify({
       ...(options ?? {}),
       messages: [{ role: "user", content: input }],
@@ -182,9 +188,19 @@ async function runStreamingForegroundChatTool(
   let lastChunk: PerplexityForegroundChunk | undefined;
   const sources: SourceInput[] = [];
 
-  const handleChunk = (event: unknown) => {
-    const chunk = asRecord(event) as PerplexityForegroundChunk | undefined;
-    if (!chunk) return;
+  const handleChunk = (event: unknown, eventName?: string) => {
+    const record = asRecord(event);
+    if (!record) return;
+    if (eventName === "error" || record.error !== undefined) {
+      const errorRecord = asRecord(record.error);
+      const message =
+        readNonEmptyString(errorRecord?.message) ??
+        readNonEmptyString(record.error) ??
+        readNonEmptyString(record.message) ??
+        "Perplexity stream failed.";
+      throw new WebfoxError("PROVIDER_FAILURE", message);
+    }
+    const chunk = record as PerplexityForegroundChunk;
     lastChunk = chunk;
     const deltaText = extractDeltaText(chunk.choices?.[0]?.delta?.content);
     if (deltaText) {
@@ -197,7 +213,7 @@ async function runStreamingForegroundChatTool(
   if (contentType.includes("application/json")) {
     handleChunk(await readResponseBody(response));
   } else {
-    await readSseJson(response, handleChunk);
+    await readSseJson(response, ({ event, data }) => handleChunk(data, event));
   }
 
   const finalText =
@@ -210,30 +226,33 @@ async function runStreamingForegroundChatTool(
   };
 }
 
-function resolveBaseUrl(baseUrl: string | undefined): string {
-  return (
-    baseUrl?.trim() ||
-    process.env.PERPLEXITY_BASE_URL?.trim() ||
-    DEFAULT_BASE_URL
-  );
+function resolveBaseUrl(
+  baseUrl: string | undefined,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return baseUrl?.trim() || env.PERPLEXITY_BASE_URL?.trim() || DEFAULT_BASE_URL;
 }
 
 function buildHeaders(
   config: HttpProvider,
   baseUrl: string,
+  env: Record<string, string | undefined> = process.env,
 ): Record<string, string> {
   const apiKey = requireApiKey(config);
-  const custom = parseCustomHeaders(process.env.PERPLEXITY_CUSTOM_HEADERS);
+  const custom = parseCustomHeaders(env.PERPLEXITY_CUSTOM_HEADERS);
   const hasIntegrationHeader = Object.keys(custom).some(
     (name) => name.toLowerCase() === "x-pplx-integration",
   );
-  return {
-    ...(shouldSendIntegrationHeader(baseUrl, hasIntegrationHeader)
+  return mergeHeaders(
+    shouldSendIntegrationHeader(baseUrl, hasIntegrationHeader)
       ? { "X-Pplx-Integration": "webfox" }
-      : {}),
-    ...custom,
-    Authorization: `Bearer ${apiKey}`,
-  };
+      : undefined,
+    custom,
+    {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+  );
 }
 
 function parseCustomHeaders(raw: string | undefined): Record<string, string> {

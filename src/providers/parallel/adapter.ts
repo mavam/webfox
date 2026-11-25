@@ -57,14 +57,19 @@ export const adapter = {
       }),
     )) as ParallelSearchResponse;
 
+    if (!Array.isArray(response.results)) {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        "Parallel returned an invalid search response.",
+      );
+    }
+
     return {
-      results: (response.results ?? [])
-        .slice(0, request.maxResults)
-        .map((result) => ({
-          title: result.title ?? result.url,
-          url: result.url,
-          snippet: trimSnippet(result.excerpts?.join(" ") ?? ""),
-        })),
+      results: response.results.slice(0, request.maxResults).map((result) => ({
+        title: result.title ?? result.url,
+        url: result.url,
+        snippet: trimSnippet(result.excerpts?.join(" ") ?? ""),
+      })),
     };
   },
 
@@ -114,8 +119,11 @@ async function parallelRequest(
   body: Record<string, unknown>,
 ): Promise<unknown> {
   const apiKey = requireApiKey(config);
+  const env = context.env ?? process.env;
+  const baseUrl =
+    config.baseUrl?.trim() || env.PARALLEL_BASE_URL?.trim() || DEFAULT_BASE_URL;
   return await requestJson(
-    joinUrl(config.baseUrl ?? DEFAULT_BASE_URL, path),
+    joinUrl(baseUrl, path),
     {
       headers: { "x-api-key": apiKey },
       body,

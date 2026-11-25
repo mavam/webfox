@@ -79,17 +79,22 @@ export const adapter = {
       serializeSearchBody(request.query, request.maxResults, request.options),
     )) as TavilySearchResponseWire;
 
+    if (!Array.isArray(response.results)) {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        "Tavily returned an invalid search response.",
+      );
+    }
+
     const images = normalizeImages(response.images);
     return {
-      results: (response.results ?? [])
-        .slice(0, request.maxResults)
-        .map((result) => ({
-          title: result.title,
-          url: result.url || "",
-          snippet: trimSnippet(result.content ?? result.raw_content),
-          score: typeof result.score === "number" ? result.score : undefined,
-          metadata: buildSearchMetadata(response, images, result),
-        })),
+      results: response.results.slice(0, request.maxResults).map((result) => ({
+        title: result.title,
+        url: result.url || "",
+        snippet: trimSnippet(result.content ?? result.raw_content),
+        score: typeof result.score === "number" ? result.score : undefined,
+        metadata: buildSearchMetadata(response, images, result),
+      })),
     };
   },
 

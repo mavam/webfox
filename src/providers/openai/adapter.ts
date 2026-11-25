@@ -209,11 +209,18 @@ async function openaiRequest(
   idempotencyKey?: string,
 ): Promise<OpenAIResponseLike> {
   const apiKey = requireApiKey(config);
+  const env = context.env ?? process.env;
+  const baseUrl =
+    config.baseUrl?.trim() || env.OPENAI_BASE_URL?.trim() || DEFAULT_BASE_URL;
+  const organization = env.OPENAI_ORG_ID?.trim();
+  const project = env.OPENAI_PROJECT_ID?.trim();
   return (await requestJson(
-    joinUrl(config.baseUrl ?? DEFAULT_BASE_URL, path),
+    joinUrl(baseUrl, path),
     {
       headers: {
         Authorization: `Bearer ${apiKey}`,
+        ...(organization ? { "OpenAI-Organization": organization } : {}),
+        ...(project ? { "OpenAI-Project": project } : {}),
         ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
       ...(body === undefined ? {} : { body }),

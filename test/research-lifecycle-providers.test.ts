@@ -202,6 +202,45 @@ describe("OpenAI provider", () => {
       sources: [{ url: "https://example.com/answer", title: "Answer Source" }],
     });
   });
+
+  it("honors OPENAI_BASE_URL, OPENAI_ORG_ID, and OPENAI_PROJECT_ID from client env", async () => {
+    const calls = stubFetch(() => ({
+      id: "resp_env_1",
+      model: "gpt-4.1",
+      status: "completed",
+      output: [
+        {
+          type: "message",
+          content: [{ type: "output_text", text: "Env answer" }],
+        },
+      ],
+      error: null,
+      incomplete_details: null,
+    }));
+
+    const result = await createWebfox({
+      config: {},
+      env: {
+        OPENAI_API_KEY: "env-key",
+        OPENAI_BASE_URL: "https://gateway.example.test/v1",
+        OPENAI_ORG_ID: "org-123",
+        OPENAI_PROJECT_ID: "proj-456",
+      },
+    }).answer({
+      provider: "openai",
+      queries: ["hi"],
+    });
+
+    expect(result.status).toBe("ok");
+    expect(calls[0]).toMatchObject({
+      url: "https://gateway.example.test/v1/responses",
+      headers: expect.objectContaining({
+        authorization: "Bearer env-key",
+        "openai-organization": "org-123",
+        "openai-project": "proj-456",
+      }),
+    });
+  });
 });
 
 describe("async research providers", () => {

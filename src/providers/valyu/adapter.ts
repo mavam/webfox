@@ -218,9 +218,17 @@ export const adapter = {
     let searchResults: SourceInput[] = [];
     let finalMetadata: Record<string, unknown> | undefined;
 
-    await readSseJson(response, (event) => {
-      const parsed = asRecord(event);
+    await readSseJson(response, ({ event, data }) => {
+      const parsed = asRecord(data);
       if (!parsed) return;
+      if (event === "error" || parsed.success === false) {
+        throw new WebfoxError(
+          "PROVIDER_FAILURE",
+          readNonEmptyString(parsed.error) ??
+            readNonEmptyString(parsed.message) ??
+            "answer failed",
+        );
+      }
       if (
         Array.isArray(parsed.search_results) &&
         parsed.success === undefined

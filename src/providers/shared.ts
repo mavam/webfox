@@ -160,40 +160,132 @@ export function expectJsonBody(payload: unknown, response: Response): unknown {
   return payload;
 }
 
-/** Read JSON payloads from a Server-Sent Events response stream. */
+/**
+ * Merge header maps with case-insensitive override precedence so later layers
+ * replace earlier values without producing comma-joined duplicate headers.
+ */
+export function mergeHeaders(
+  ...layers: Array<Record<string, string> | undefined>
+): Record<string, string> {
+  const keys = new Map<string, string>();
+  const values = new Map<string, string>();
+  for (const layer of layers) {
+    if (!layer) continue;
+    for (const [name, value] of Object.entries(layer)) {
+      const lower = name.toLowerCase();
+      keys.set(lower, name);
+      values.set(lower, value);
+    }
+  }
+  const merged: Record<string, string> = {};
+  for (const [lower, name] of keys) {
+    merged[name] = values.get(lower)!;
+  }
+  return merged;
+}
+
+export interface SseJsonEvent {
+  event?: string;
+  data: unknown;
+}
+
+/**
+ * Read JSON events from a Server-Sent Events response stream.
+ * Buffers multi-line `data:` payloads per SSE event, preserves `event:` names,
+ * terminates immediately on `[DONE]`, surfaces malformed JSON as a provider
+ * error, and lets handler errors propagate.
+ */
 export async function readSseJson(
   response: Response,
-  onData: (value: unknown) => void,
+  onEvent: (event: SseJsonEvent) => void,
 ): Promise<void> {
   const reader = response.body?.getReader();
+  let eventName: string | undefined;
+  let dataLines: string[] = [];
+  let doneStream = false;
+
+  const dispatch = () => {
+    if (dataLines.length === 0) {
+      eventName = undefined;
+      return;
+    }
+    const raw = dataLines.join("\n").trim();
+    const currentEvent = eventName;
+    eventName = undefined;
+    dataLines = [];
+    if (!raw) return;
+    if (raw === "[DONE]") {
+      doneStream = true;
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      const snippet = raw.replace(/\s+/g, " ").slice(0, 200);
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        `Expected JSON in SSE event data but received: ${snippet}`,
+      );
+    }
+    onEvent({ ...(currentEvent ? { event: currentEvent } : {}), data: parsed });
+  };
+
   const handleLine = (rawLine: string) => {
     const line = rawLine.replace(/\r$/, "");
-    if (!line.startsWith("data:")) return;
-    const data = line.slice(5).trim();
-    if (!data || data === "[DONE]") return;
-    try {
-      onData(JSON.parse(data) as unknown);
-    } catch {
-      // Ignore non-JSON keepalives or malformed partial frames.
+    if (line === "") {
+      dispatch();
+      return;
+    }
+    if (line.startsWith(":")) return;
+    const colon = line.indexOf(":");
+    const field = colon === -1 ? line : line.slice(0, colon);
+    let value = colon === -1 ? "" : line.slice(colon + 1);
+    if (value.startsWith(" ")) value = value.slice(1);
+    if (field === "event") {
+      eventName = value || undefined;
+    } else if (field === "data") {
+      dataLines.push(value);
     }
   };
+
   if (!reader) {
-    for (const line of (await response.text()).split("\n")) handleLine(line);
+    for (const line of (await response.text()).split("\n")) {
+      handleLine(line);
+      if (doneStream) return;
+    }
+    dispatch();
     return;
   }
+
   const decoder = new TextDecoder();
   let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) handleLine(line);
-  }
-  buffer += decoder.decode();
-  if (buffer) {
-    for (const line of buffer.split("\n")) handleLine(line);
+  try {
+    while (!doneStream) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        handleLine(line);
+        if (doneStream) break;
+      }
+    }
+    if (!doneStream) {
+      buffer += decoder.decode();
+      if (buffer) {
+        for (const line of buffer.split("\n")) {
+          handleLine(line);
+          if (doneStream) break;
+        }
+      }
+      if (!doneStream) dispatch();
+    }
+  } finally {
+    if (doneStream) {
+      await reader.cancel().catch(() => {});
+    }
   }
 }
 
@@ -251,13 +343,15 @@ export async function requestJson(
   const method = init.method ?? (init.body === undefined ? "GET" : "POST");
   const response = await fetch(url, {
     method,
-    headers: {
-      Accept: "application/json",
-      ...(init.body === undefined
-        ? {}
-        : { "Content-Type": "application/json" }),
-      ...init.headers,
-    },
+    headers: mergeHeaders(
+      {
+        Accept: "application/json",
+        ...(init.body === undefined
+          ? {}
+          : { "Content-Type": "application/json" }),
+      },
+      init.headers,
+    ),
     ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     signal: init.signal,
   });

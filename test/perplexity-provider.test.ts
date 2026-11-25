@@ -239,4 +239,54 @@ describe("Perplexity provider", () => {
 
     expect(calls[0]?.headers["x-pplx-integration"]).toBe("my-app");
   });
+
+  it("fails streaming research on mid-stream SSE error events instead of returning partial text", async () => {
+    const sse = [
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Partial " } }] })}`,
+      "",
+      "event: error",
+      `data: ${JSON.stringify({ error: { message: "upstream stream failed" } })}`,
+      "",
+    ].join("\n");
+
+    stubFetch(
+      () =>
+        new Response(sse, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+    );
+
+    const provider = providerHarness(perplexityProvider);
+    await expect(
+      provider.research(
+        "Investigate",
+        { credentials: { api: "test-key" } },
+        { cwd: process.cwd() },
+      ),
+    ).rejects.toThrow("upstream stream failed");
+  });
+
+  it("reads PERPLEXITY_BASE_URL and PERPLEXITY_CUSTOM_HEADERS from context.env and merges headers case-insensitively", async () => {
+    const calls = stubFetch(() => ({ results: [] }));
+    const provider = providerHarness(perplexityProvider);
+    await provider.search(
+      "q",
+      1,
+      { credentials: { api: "test-key" } },
+      {
+        cwd: process.cwd(),
+        env: {
+          PERPLEXITY_BASE_URL: "https://proxy.env.test",
+          PERPLEXITY_CUSTOM_HEADERS:
+            "authorization: stale\ncontent-type: text/plain\nX-Trace: 1",
+        },
+      },
+    );
+
+    expect(calls[0]?.url).toBe("https://proxy.env.test/search");
+    expect(calls[0]?.headers.authorization).toBe("Bearer test-key");
+    expect(calls[0]?.headers["content-type"]).toBe("application/json");
+    expect(calls[0]?.headers["x-trace"]).toBe("1");
+  });
 });
