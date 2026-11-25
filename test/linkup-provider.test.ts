@@ -70,7 +70,6 @@ describe("providerHarness(linkupProvider)", () => {
       fromDate: "2026-01-02",
     });
     expect(response).toEqual({
-      provider: "linkup",
       results: [
         {
           title: "Linkup Docs",
@@ -253,7 +252,6 @@ describe("providerHarness(linkupProvider)", () => {
       reasoningDepth: "L",
     });
     expect(response).toEqual({
-      provider: "linkup",
       text: "Linkup research result",
       sources: [{ url: "https://example.com/a", title: "Source A" }],
     });
@@ -282,7 +280,6 @@ describe("providerHarness(linkupProvider)", () => {
     );
 
     expect(response).toEqual({
-      provider: "linkup",
       text: "",
       sources: [{ title: "Source A", url: "https://example.com/a" }],
     });
@@ -338,7 +335,6 @@ describe("providerHarness(linkupProvider)", () => {
       }),
     });
     expect(response).toEqual({
-      provider: "linkup",
       text: JSON.stringify(
         {
           companies: [

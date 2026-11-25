@@ -1,10 +1,11 @@
 import type { ContentsAnswer } from "../../domain.js";
 import type {
+  HttpProvider,
   ProviderContext,
+  ProviderRequest,
   SearchResponse,
   ToolOutput,
 } from "../contract.js";
-import type { Exa } from "./types.js";
 
 import {
   ambiguousContentsError,
@@ -13,6 +14,7 @@ import {
   omittedContentsError,
   pickSingleUrlOutcome,
   requestJson,
+  requireApiKey,
   trimSnippet,
 } from "../shared.js";
 
@@ -30,63 +32,61 @@ type ExaAnswerResponse = {
   citations?: ExaResult[];
 };
 
-const exaImplementation = {
+export const adapter = {
   async search(
-    query: string,
-    maxResults: number,
-    config: Exa,
+    request: ProviderRequest<"search">,
+    config: HttpProvider,
     context: ProviderContext,
-    searchOptions?: Record<string, unknown>,
   ): Promise<SearchResponse> {
     const response = (await exaRequest(
       config,
       "/search",
-      buildSearchBody(query, {
-        ...(searchOptions ?? {}),
-        numResults: maxResults,
+      buildSearchBody(request.query, {
+        ...(request.options ?? {}),
+        numResults: request.maxResults,
       }),
       context,
     )) as ExaSearchResponse;
 
     return {
-      provider: "exa",
-      results: (response.results ?? []).slice(0, maxResults).map((result) => ({
-        title: typeof result.title === "string" ? result.title : undefined,
-        url: String(result.url ?? ""),
-        snippet: trimSnippet(
-          typeof result.text === "string"
-            ? result.text
-            : Array.isArray(result.highlights)
-              ? result.highlights.join(" ")
-              : typeof result.summary === "string"
-                ? result.summary
-                : "",
-        ),
-        score: typeof result.score === "number" ? result.score : undefined,
-      })),
+      results: (response.results ?? [])
+        .slice(0, request.maxResults)
+        .map((result) => ({
+          title: typeof result.title === "string" ? result.title : undefined,
+          url: String(result.url ?? ""),
+          snippet: trimSnippet(
+            typeof result.text === "string"
+              ? result.text
+              : Array.isArray(result.highlights)
+                ? result.highlights.join(" ")
+                : typeof result.summary === "string"
+                  ? result.summary
+                  : "",
+          ),
+          score: typeof result.score === "number" ? result.score : undefined,
+        })),
     };
   },
 
   async contents(
-    url: string,
-    config: Exa,
+    request: ProviderRequest<"contents">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ContentsAnswer> {
     const response = (await exaRequest(
       config,
       "/contents",
-      { urls: [url], ...(options ?? {}) },
+      { urls: [request.url], ...(request.options ?? {}) },
       context,
     )) as ExaSearchResponse;
 
-    const outcome = pickSingleUrlOutcome(url, response.results ?? []);
+    const outcome = pickSingleUrlOutcome(request.url, response.results ?? []);
     if (outcome.kind === "omitted") throw omittedContentsError();
     if (outcome.kind === "ambiguous") throw ambiguousContentsError();
     const result = outcome.value;
 
     return {
-      url: typeof result.url === "string" ? result.url : url,
+      url: typeof result.url === "string" ? result.url : request.url,
       ...(typeof result.text === "string" ? { content: result.text } : {}),
       ...(result.summary !== undefined ? { summary: result.summary } : {}),
       metadata: result as unknown as Record<string, unknown>,
@@ -94,16 +94,16 @@ const exaImplementation = {
   },
 
   async answer(
-    query: string,
-    config: Exa,
+    request: ProviderRequest<"answer">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
+    const options = request.options;
     const response = (await exaRequest(
       config,
       "/answer",
       {
-        query,
+        query: request.query,
         stream: false,
         text: options?.text ?? false,
         model: options?.model ?? "exa",
@@ -115,7 +115,6 @@ const exaImplementation = {
     )) as ExaAnswerResponse;
 
     return {
-      provider: "exa",
       text:
         typeof response.answer === "string"
           ? response.answer
@@ -127,18 +126,17 @@ const exaImplementation = {
   },
 
   async research(
-    input: string,
-    config: Exa,
+    request: ProviderRequest<"research">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
     context.signal?.throwIfAborted();
     context.onProgress?.("Exa is researching and synthesizing the report.");
     const result = (await exaRequest(
       config,
       "/search",
-      buildSearchBody(input, {
-        ...(options ?? {}),
+      buildSearchBody(request.input, {
+        ...(request.options ?? {}),
         type: "deep-reasoning",
         outputSchema: {
           type: "text",
@@ -150,7 +148,6 @@ const exaImplementation = {
     )) as ExaSearchResponse;
     const content = result.output?.content;
     return {
-      provider: "exa",
       text: typeof content === "string" ? content : "",
       sources: result.results ?? [],
     };
@@ -177,15 +174,12 @@ function buildSearchBody(
 }
 
 async function exaRequest(
-  config: Exa,
+  config: HttpProvider,
   path: string,
   body: Record<string, unknown>,
   context: ProviderContext,
 ): Promise<unknown> {
-  const apiKey = config.credentials?.api;
-  if (!apiKey) {
-    throw new Error("is missing an API key");
-  }
+  const apiKey = requireApiKey(config);
 
   return await requestJson(
     joinUrl(config.baseUrl ?? DEFAULT_BASE_URL, path),
@@ -215,55 +209,3 @@ function readExaError(payload: unknown, response: Response): string {
     .join(". ");
   return message || `Request failed with status ${response.status}.`;
 }
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: Exa,
-    context: ProviderContext,
-  ) {
-    return await exaImplementation.search(
-      input.query,
-      input.maxResults,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async contents(
-    input: import("../contract.js").ProviderRequest<"contents">,
-    config: Exa,
-    context: ProviderContext,
-  ) {
-    return await exaImplementation.contents(
-      input.url,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async answer(
-    input: import("../contract.js").ProviderRequest<"answer">,
-    config: Exa,
-    context: ProviderContext,
-  ) {
-    return await exaImplementation.answer(
-      input.query,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async research(
-    input: import("../contract.js").ProviderRequest<"research">,
-    config: Exa,
-    context: ProviderContext,
-  ) {
-    return await exaImplementation.research(
-      input.input,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

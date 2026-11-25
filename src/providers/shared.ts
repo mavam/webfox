@@ -1,4 +1,64 @@
 import { httpError, WebfoxError } from "../errors.js";
+import type { Provider } from "./contract.js";
+
+export function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+export function readString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+export function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
+}
+
+export function readInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value)
+    ? value
+    : undefined;
+}
+
+export function readPositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
+}
+
+export function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const strings = value.filter(
+    (item): item is string => typeof item === "string" && item.trim() !== "",
+  );
+  return strings.length > 0 ? strings : undefined;
+}
+
+export function readStringUnion<const TValue extends string>(
+  value: unknown,
+  values: readonly TValue[],
+): TValue | undefined {
+  return typeof value === "string" && values.includes(value as TValue)
+    ? (value as TValue)
+    : undefined;
+}
+
+export function requireApiKey(
+  config: Provider,
+  key = "api",
+  label?: string,
+): string {
+  const value = config.credentials?.[key];
+  if (!value) {
+    throw new Error(
+      label ? `${label} is missing an API key` : "is missing an API key",
+    );
+  }
+  return value;
+}
 
 export function omittedContentsError(): WebfoxError {
   return new WebfoxError(

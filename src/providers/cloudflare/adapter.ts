@@ -1,15 +1,14 @@
 import CloudflareClient from "cloudflare";
 
 import type { ContentsAnswer } from "../../domain.js";
-import type { ProviderContext } from "../contract.js";
+import type { ProviderContext, ProviderRequest } from "../contract.js";
 import type { Cloudflare } from "./types.js";
 
-const cloudflareImplementation = {
+export const adapter = {
   async contents(
-    url: string,
+    request: ProviderRequest<"contents">,
     config: Cloudflare,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ContentsAnswer> {
     const client = createClient(config);
     const accountId = config.accountId;
@@ -19,15 +18,15 @@ const cloudflareImplementation = {
 
     const markdown = await client.browserRendering.markdown.create(
       {
-        ...(options ?? {}),
+        ...(request.options ?? {}),
         account_id: accountId,
-        url,
+        url: request.url,
       } as never,
       buildRequestOptions(context),
     );
 
     return {
-      url,
+      url: request.url,
       content: markdown,
     };
   },
@@ -50,18 +49,3 @@ function buildRequestOptions(
 ): { signal: AbortSignal } | undefined {
   return context.signal ? { signal: context.signal } : undefined;
 }
-
-export const adapter = {
-  async contents(
-    input: import("../contract.js").ProviderRequest<"contents">,
-    config: Cloudflare,
-    context: ProviderContext,
-  ) {
-    return await cloudflareImplementation.contents(
-      input.url,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

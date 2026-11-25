@@ -50,7 +50,6 @@ describe("Keenable search", () => {
       query: "node abort",
       max_results: 5,
     });
-    expect(response.provider).toBe("keenable");
     expect(response.results.map((r) => [r.url, r.snippet])).toEqual([
       ["https://nodejs.org/api/globals.html", "AbortSignal docs"],
       ["https://example.org/", `${"x".repeat(299)}…`],

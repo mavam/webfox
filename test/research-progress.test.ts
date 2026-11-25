@@ -11,7 +11,6 @@ it("reports acceptance and elapsed time without job IDs or duplicate terminal st
   const start = vi.fn().mockResolvedValue({ id: "opaque-job-id" });
   let polls = 0;
   const pending = executeAsyncResearch({
-    providerId: "gemini",
     providerLabel: "Gemini",
     context: { cwd: ".", onProgress: progress },
     start,
@@ -20,11 +19,11 @@ it("reports acceptance and elapsed time without job IDs or duplicate terminal st
         ? { status: "in_progress" }
         : {
             status: "completed",
-            output: { provider: "gemini", text: "# Report" },
+            output: { text: "# Report" },
           },
   });
   await vi.advanceTimersByTimeAsync(63_000);
-  expect(await pending).toEqual({ provider: "gemini", text: "# Report" });
+  expect(await pending).toEqual({ text: "# Report" });
   expect(start).toHaveBeenCalledTimes(1);
   expect(progress.mock.calls.map(([message]) => message)).toEqual([
     "Submitting research to Gemini.",
@@ -41,10 +40,9 @@ it("reports provider status transitions without inventing stages", async () => {
     { status: "in_progress", statusText: "queued" },
     { status: "in_progress", statusText: "queued" },
     { status: "in_progress" },
-    { status: "completed", output: { provider: "gemini", text: "report" } },
+    { status: "completed", output: { text: "report" } },
   ];
   const pending = executeAsyncResearch({
-    providerId: "gemini",
     providerLabel: "Gemini",
     context: { cwd: ".", onProgress: progress },
     start: async () => ({ id: "job" }),
@@ -71,10 +69,9 @@ it("reports retry delay and budget without resubmitting the job", async () => {
     )
     .mockResolvedValue({
       status: "completed",
-      output: { provider: "gemini", text: "report" },
+      output: { text: "report" },
     });
   const pending = executeAsyncResearch({
-    providerId: "gemini",
     providerLabel: "Gemini",
     context: {
       cwd: ".",
@@ -99,7 +96,6 @@ it.each(["failed", "cancelled"] as const)(
     const progress = vi.fn();
     await expect(
       executeAsyncResearch({
-        providerId: "gemini",
         providerLabel: "Gemini",
         context: { cwd: ".", onProgress: progress },
         start: async () => ({ id: "job" }),

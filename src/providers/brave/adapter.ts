@@ -1,31 +1,30 @@
 import { httpError as transportError } from "../../errors.js";
 import type {
+  HttpProvider as Brave,
   ProviderContext,
+  ProviderRequest,
   SearchResponse,
   ToolOutput,
 } from "../contract.js";
-import type { Brave } from "./types.js";
-import { trimSnippet } from "../shared.js";
+import { requireApiKey, trimSnippet } from "../shared.js";
 
 const DEFAULT_BASE_URL = "https://api.search.brave.com";
 const BRAVE_API_VERSION: string | undefined = undefined;
 
-const braveImplementation = {
+export const adapter = {
   async search(
-    query: string,
-    maxResults: number,
+    request: ProviderRequest<"search">,
     config: Brave,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
-    const apiKey = requireKey(config.credentials?.search, "Brave search");
+    const apiKey = requireApiKey(config, "search", "Brave search");
 
-    const callOptions = { ...(options ?? {}) };
+    const callOptions = { ...(request.options ?? {}) };
     const mode = readMode(callOptions.mode);
     if (mode === "llm_context")
       return await llmContext(
-        query,
-        maxResults,
+        request.query,
+        request.maxResults,
         config,
         context,
         apiKey,
@@ -33,8 +32,8 @@ const braveImplementation = {
       );
     if (mode === "news")
       return await news(
-        query,
-        maxResults,
+        request.query,
+        request.maxResults,
         config,
         context,
         apiKey,
@@ -42,8 +41,8 @@ const braveImplementation = {
       );
     if (mode === "videos")
       return await videos(
-        query,
-        maxResults,
+        request.query,
+        request.maxResults,
         config,
         context,
         apiKey,
@@ -51,8 +50,8 @@ const braveImplementation = {
       );
     if (mode === "images")
       return await images(
-        query,
-        maxResults,
+        request.query,
+        request.maxResults,
         config,
         context,
         apiKey,
@@ -60,38 +59,53 @@ const braveImplementation = {
       );
     if (mode === "places")
       return await places(
-        query,
-        maxResults,
+        request.query,
+        request.maxResults,
         config,
         context,
         apiKey,
         callOptions,
       );
-    return await web(query, maxResults, config, context, apiKey, callOptions);
+    return await web(
+      request.query,
+      request.maxResults,
+      config,
+      context,
+      apiKey,
+      callOptions,
+    );
   },
 
   async answer(
-    query: string,
+    request: ProviderRequest<"answer">,
     config: Brave,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
     const raw = {
-      ...(options ?? {}),
+      ...(request.options ?? {}),
     };
-    return await completion(query, config, context, buildAnswerRequest(raw));
+    return await completion(
+      request.query,
+      config,
+      context,
+      buildAnswerRequest(raw),
+    );
   },
 
   async research(
-    input: string,
+    request: ProviderRequest<"research">,
     config: Brave,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
     const raw = {
-      ...(options ?? {}),
+      ...(request.options ?? {}),
     };
-    return await completion(input, config, context, buildResearchRequest(raw));
+    return await completion(
+      request.input,
+      config,
+      context,
+      buildResearchRequest(raw),
+    );
   },
 };
 
@@ -203,7 +217,6 @@ async function web(
   if (!r.ok) throw await httpError(r);
   const p = obj(await r.json());
   return {
-    provider: "brave",
     results: arr(obj(p.web).results)
       .map((e) => {
         const x = obj(e);
@@ -260,7 +273,6 @@ async function llmContext(
   if (!r.ok) throw await httpError(r);
   const p = obj(await r.json());
   return {
-    provider: "brave",
     results: collectLlmContextEntries(obj(p.grounding))
       .map((e) => {
         const x = obj(e);
@@ -324,7 +336,6 @@ async function news(
   if (!r.ok) throw await httpError(r);
   const p = obj(await r.json());
   return {
-    provider: "brave",
     results: arr(p.results)
       .map((e) => {
         const x = obj(e);
@@ -378,7 +389,6 @@ async function videos(
   if (!r.ok) throw await httpError(r);
   const p = obj(await r.json());
   return {
-    provider: "brave",
     results: arr(p.results)
       .map((e) => {
         const x = obj(e);
@@ -432,7 +442,6 @@ async function images(
   if (!r.ok) throw await httpError(r);
   const p = obj(await r.json());
   return {
-    provider: "brave",
     results: arr(p.results)
       .map((e) => {
         const x = obj(e);
@@ -503,7 +512,6 @@ async function places(
       : Promise.resolve(new Map<string, Record<string, unknown>>()),
   ]);
   return {
-    provider: "brave",
     results: rows.map((e) => {
       const x = obj(e);
       const id = str(x.id);
@@ -712,7 +720,6 @@ async function completion(
     body.stream === false ? parseAnswerJson(text) : parseAnswerStream(text);
   const metadata = buildAnswerMetadata(parsed);
   return {
-    provider: "brave",
     text: parsed.answer,
     sources: parsed.citations,
     ...(metadata ? { metadata } : {}),
@@ -925,43 +932,3 @@ function dedupeCitations(
     return true;
   });
 }
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: Brave,
-    context: ProviderContext,
-  ) {
-    return await braveImplementation.search(
-      input.query,
-      input.maxResults,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async answer(
-    input: import("../contract.js").ProviderRequest<"answer">,
-    config: Brave,
-    context: ProviderContext,
-  ) {
-    return await braveImplementation.answer(
-      input.query,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async research(
-    input: import("../contract.js").ProviderRequest<"research">,
-    config: Brave,
-    context: ProviderContext,
-  ) {
-    return await braveImplementation.research(
-      input.input,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

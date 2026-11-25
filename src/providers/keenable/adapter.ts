@@ -1,12 +1,19 @@
 import { WebfoxError } from "../../errors.js";
 import type {
+  HttpProvider,
   ProviderContext,
   ProviderRequest,
   SearchResponse,
   SearchResult,
 } from "../contract.js";
-import { joinUrl, requestJson, trimSnippet } from "../shared.js";
-import type { Keenable } from "./types.js";
+import {
+  asRecord,
+  joinUrl,
+  readNonEmptyString as text,
+  requestJson,
+  requireApiKey,
+  trimSnippet,
+} from "../shared.js";
 
 const DEFAULT_BASE_URL = "https://api.keenable.ai";
 // https://docs.keenable.ai/api-reference/search: max_results is 1-50.
@@ -25,11 +32,10 @@ const FORWARDED_OPTIONS = [
 export const adapter = {
   async search(
     request: ProviderRequest<"search">,
-    config: Keenable,
+    config: HttpProvider,
     context: ProviderContext,
   ): Promise<SearchResponse> {
-    const apiKey = config.credentials?.api;
-    if (!apiKey) throw new Error("Keenable search is missing an API key");
+    const apiKey = requireApiKey(config, "api", "Keenable search");
     const maxResults = Math.max(
       1,
       Math.min(MAX_RESULTS, Math.trunc(request.maxResults || 0)),
@@ -68,7 +74,7 @@ export const adapter = {
     const results = entries
       .map(toSearchResult)
       .filter((result): result is SearchResult => result !== undefined);
-    return { provider: "keenable", results: results.slice(0, maxResults) };
+    return { results: results.slice(0, maxResults) };
   },
 };
 
@@ -97,14 +103,4 @@ function toSearchResult(entry: unknown): SearchResult | undefined {
     snippet: excerpt ? trimSnippet(excerpt) : "",
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function text(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
 }

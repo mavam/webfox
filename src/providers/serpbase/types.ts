@@ -1,4 +1,4 @@
-import type { Provider } from "../contract.js";
+import type { HttpProvider } from "../contract.js";
 
 export const SERPBASE_MODES = {
   search: {
@@ -23,6 +23,4 @@ export const SERPBASE_MODES = {
 
 export type SerpBaseMode = keyof typeof SERPBASE_MODES;
 
-export interface SerpBase extends Provider {
-  baseUrl?: string;
-}
+export type SerpBase = HttpProvider;

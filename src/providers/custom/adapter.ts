@@ -53,7 +53,6 @@ export const adapter = {
     if (!Array.isArray(output.results))
       invalid("Custom search output requires a results array.");
     return {
-      provider: "custom",
       results: output.results.map((entry) => {
         const result = object(entry, "Search results must be objects.");
         return {
@@ -134,7 +133,6 @@ export const adapter = {
 };
 function textOutput(output: Record<string, unknown>): ToolOutput {
   return {
-    provider: "custom",
     text: string(output.text, "text"),
     ...(output.sources === undefined
       ? {}

@@ -2,7 +2,9 @@ import { WebfoxError } from "../../errors.js";
 import type { ContentsAnswer } from "../../domain.js";
 import { executeAsyncResearch } from "../../runtime/polling.js";
 import type {
+  HttpProvider,
   ProviderContext,
+  ProviderRequest,
   ResearchJob,
   ResearchPollResult,
   SearchResponse,
@@ -10,13 +12,15 @@ import type {
   SourceInput,
   ToolOutput,
 } from "../contract.js";
-import type { Linkup } from "./types.js";
 
 import {
+  asRecord,
+  expectJsonBody,
   formatJson,
   joinUrl,
-  expectJsonBody,
   readResponseBody,
+  readString,
+  requireApiKey,
   trimSnippet,
 } from "../shared.js";
 
@@ -109,38 +113,34 @@ type LinkupResearchOptions = {
   input?: string;
 };
 
-const linkupImplementation = {
+export const adapter = {
   async search(
-    query: string,
-    maxResults: number,
-    config: Linkup,
+    request: ProviderRequest<"search">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
     const response = (await linkupRequest(config, context, "/search", {
-      body: buildSearchParams(query, maxResults, {
-        ...(options ?? {}),
+      body: buildSearchParams(request.query, request.maxResults, {
+        ...(request.options ?? {}),
       }),
     })) as { results?: unknown[] };
 
     return {
-      provider: "linkup",
       results: (response.results ?? [])
         .map(toSearchResult)
         .filter((result): result is SearchResult => result !== null)
-        .slice(0, maxResults),
+        .slice(0, request.maxResults),
     };
   },
 
   async contents(
-    url: string,
-    config: Linkup,
+    request: ProviderRequest<"contents">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ContentsAnswer> {
     const response = (await linkupRequest(config, context, "/fetch", {
-      body: buildFetchParams(url, {
-        ...(options ?? {}),
+      body: buildFetchParams(request.url, {
+        ...(request.options ?? {}),
       }),
     })) as FetchResponse;
 
@@ -157,80 +157,72 @@ const linkupImplementation = {
       ),
     );
     return {
-      url,
+      url: request.url,
       ...(response.markdown ? { content: response.markdown } : {}),
       ...(Object.keys(metadata).length ? { metadata } : {}),
     };
   },
 
   async research(
-    input: string,
-    config: Linkup,
+    request: ProviderRequest<"research">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
     return await executeAsyncResearch({
       providerLabel: "Linkup",
-      providerId: "linkup",
       context,
       start: (researchContext) =>
-        linkupImplementation.startResearch(
-          input,
-          config,
-          researchContext,
-          options,
-        ),
-      poll: (id, researchContext) =>
-        linkupImplementation.pollResearch(id, config, researchContext),
+        startResearch(request.input, config, researchContext, request.options),
+      poll: (id, researchContext) => pollResearch(id, config, researchContext),
     });
   },
-
-  async startResearch(
-    input: string,
-    config: Linkup,
-    context: ProviderContext,
-    options?: Record<string, unknown>,
-  ): Promise<ResearchJob> {
-    const task = (await linkupRequest(config, context, "/research", {
-      body: buildResearchParams(input, {
-        ...(options ?? {}),
-      }),
-    })) as ResearchTask;
-
-    return { id: task.id };
-  },
-
-  async pollResearch(
-    id: string,
-    config: Linkup,
-    context: ProviderContext,
-  ): Promise<ResearchPollResult> {
-    const task = (await linkupRequest(
-      config,
-      context,
-      `/research/${encodeURIComponent(id)}`,
-    )) as ResearchTask;
-
-    if (task.status === "completed") {
-      return {
-        status: "completed",
-        output: formatResearchTaskOutput(task),
-      };
-    }
-
-    if (task.status === "failed") {
-      return {
-        status: "failed",
-        error: task.error ?? "research failed",
-      };
-    }
-
-    return {
-      status: "in_progress",
-      statusText: task.status,
-    };
-  },
 };
+
+async function startResearch(
+  input: string,
+  config: HttpProvider,
+  context: ProviderContext,
+  options?: Record<string, unknown>,
+): Promise<ResearchJob> {
+  const task = (await linkupRequest(config, context, "/research", {
+    body: buildResearchParams(input, {
+      ...(options ?? {}),
+    }),
+  })) as ResearchTask;
+
+  return { id: task.id };
+}
+
+async function pollResearch(
+  id: string,
+  config: HttpProvider,
+  context: ProviderContext,
+): Promise<ResearchPollResult> {
+  const task = (await linkupRequest(
+    config,
+    context,
+    `/research/${encodeURIComponent(id)}`,
+  )) as ResearchTask;
+
+  if (task.status === "completed") {
+    return {
+      status: "completed",
+      output: formatResearchTaskOutput(task),
+    };
+  }
+
+  if (task.status === "failed") {
+    return {
+      status: "failed",
+      error: task.error ?? "research failed",
+    };
+  }
+
+  return {
+    status: "in_progress",
+    statusText: task.status,
+  };
+}
 
 function buildSearchParams(
   query: string,
@@ -398,15 +390,12 @@ function serializeSchema(schema: unknown): string {
 
 /** One Linkup API call; the runtime owns retries and cancellation. */
 async function linkupRequest(
-  config: Linkup,
+  config: HttpProvider,
   context: ProviderContext,
   path: string,
   init: { body?: object } = {},
 ): Promise<unknown> {
-  const apiKey = config.credentials?.api;
-  if (!apiKey) {
-    throw new Error("is missing an API key");
-  }
+  const apiKey = requireApiKey(config);
 
   const response = await fetch(
     joinUrl(config.baseUrl ?? DEFAULT_BASE_URL, path),
@@ -459,8 +448,8 @@ function linkupError(response: Response, payload: unknown): WebfoxError {
 
 function formatResearchTaskOutput(task: ResearchTask): ToolOutput {
   const output = task.output;
-  if (output == null) return { provider: "linkup", text: "" };
-  if (typeof output === "string") return { provider: "linkup", text: output };
+  if (output == null) return { text: "" };
+  if (typeof output === "string") return { text: output };
   const outputType = readString(asRecord(task.input)?.outputType);
   const record = asRecord(output);
   // A sourced answer may lack its text; that is an empty answer, while
@@ -471,11 +460,10 @@ function formatResearchTaskOutput(task: ResearchTask): ToolOutput {
     ("answer" in record || "sources" in record)
   )
     return {
-      provider: "linkup",
       text: readString(record.answer) ?? "",
       sources: readSources(record.sources),
     };
-  return { provider: "linkup", text: formatJson(output) };
+  return { text: formatJson(output) };
 }
 
 function toSearchResult(value: unknown): SearchResult | null {
@@ -528,16 +516,6 @@ function readSources(value: unknown): SourceInput[] {
   });
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
 /** Linkup filters by calendar day and expects YYYY-MM-DD. */
 function toDate(value: string | number | Date, name: string): string {
   const date = value instanceof Date ? value : new Date(value);
@@ -548,43 +526,3 @@ function toDate(value: string | number | Date, name: string): string {
   }
   return date.toISOString().slice(0, 10);
 }
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: Linkup,
-    context: ProviderContext,
-  ) {
-    return await linkupImplementation.search(
-      input.query,
-      input.maxResults,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async contents(
-    input: import("../contract.js").ProviderRequest<"contents">,
-    config: Linkup,
-    context: ProviderContext,
-  ) {
-    return await linkupImplementation.contents(
-      input.url,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async research(
-    input: import("../contract.js").ProviderRequest<"research">,
-    config: Linkup,
-    context: ProviderContext,
-  ) {
-    return await linkupImplementation.research(
-      input.input,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

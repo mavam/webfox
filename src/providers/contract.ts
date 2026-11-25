@@ -5,7 +5,6 @@ import type {
   SearchResult,
 } from "../domain.js";
 export interface SearchResponse {
-  provider: ProviderId;
   results: SearchResult[];
 }
 
@@ -20,7 +19,6 @@ export interface SourceInput {
  * empty, and its citations as `sources`; presentation belongs to the renderer.
  */
 export interface ToolOutput {
-  provider: ProviderId;
   text: string;
   sources?: SourceInput[];
   metadata?: Record<string, unknown>;
@@ -94,6 +92,10 @@ export interface Provider {
   credentials?: Record<string, string>;
 }
 
+export interface HttpProvider extends Provider {
+  baseUrl?: string;
+}
+
 export type {
   Capability as Tool,
   ProviderId,
@@ -101,24 +103,24 @@ export type {
 } from "../domain.js";
 
 export interface ProviderConfigMap {
-  brave: import("./brave/types.js").Brave;
+  brave: HttpProvider;
   cloudflare: import("./cloudflare/types.js").Cloudflare;
   custom: import("./custom/types.js").Custom;
-  exa: import("./exa/types.js").Exa;
-  firecrawl: import("./firecrawl/types.js").Firecrawl;
-  gemini: import("./gemini/types.js").Gemini;
-  keenable: import("./keenable/types.js").Keenable;
-  linkup: import("./linkup/types.js").Linkup;
-  ollama: import("./ollama/types.js").Ollama;
+  exa: HttpProvider;
+  firecrawl: HttpProvider;
+  gemini: Provider;
+  keenable: HttpProvider;
+  linkup: HttpProvider;
+  ollama: HttpProvider;
   openai: import("./openai/types.js").OpenAI;
-  parallel: import("./parallel/types.js").Parallel;
-  perplexity: import("./perplexity/types.js").Perplexity;
+  parallel: HttpProvider;
+  perplexity: HttpProvider;
   serpbase: import("./serpbase/types.js").SerpBase;
   serper: import("./serper/types.js").Serper;
-  sofya: import("./sofya/types.js").Sofya;
-  tavily: import("./tavily/types.js").Tavily;
-  valyu: import("./valyu/types.js").Valyu;
-  youcom: import("./youcom/types.js").Youcom;
+  sofya: HttpProvider;
+  tavily: HttpProvider;
+  valyu: HttpProvider;
+  youcom: HttpProvider;
 }
 export type ProviderConfig<T extends ProviderId = ProviderId> =
   ProviderConfigMap[T];

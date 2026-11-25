@@ -2,37 +2,39 @@ import ParallelClient from "parallel-web";
 
 import type { ContentsAnswer } from "../../domain.js";
 import { WebfoxError } from "../../errors.js";
-import type { ProviderContext, SearchResponse } from "../contract.js";
-import type { Parallel } from "./types.js";
+import type {
+  HttpProvider,
+  ProviderContext,
+  ProviderRequest,
+  SearchResponse,
+} from "../contract.js";
 
 import {
   ambiguousContentsError,
   formatJson,
   omittedContentsError,
   pickSingleUrlOutcome,
+  requireApiKey,
   trimSnippet,
 } from "../shared.js";
 
-const parallelImplementation = {
+export const adapter = {
   async search(
-    query: string,
-    maxResults: number,
-    config: Parallel,
+    request: ProviderRequest<"search">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
     const client = createClient(config);
 
     const response = (await client.search(
-      buildParallelSearchParams(query, maxResults, {
-        ...(options ?? {}),
+      buildParallelSearchParams(request.query, request.maxResults, {
+        ...(request.options ?? {}),
       }) as never,
       buildRequestOptions(context),
     )) as ParallelSearchResponse;
 
     return {
-      provider: "parallel",
-      results: response.results.slice(0, maxResults).map((result) => ({
+      results: response.results.slice(0, request.maxResults).map((result) => ({
         title: result.title ?? result.url,
         url: result.url,
         snippet: trimSnippet(result.excerpts?.join(" ") ?? ""),
@@ -41,22 +43,21 @@ const parallelImplementation = {
   },
 
   async contents(
-    url: string,
-    config: Parallel,
+    request: ProviderRequest<"contents">,
+    config: HttpProvider,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ContentsAnswer> {
     const client = createClient(config);
 
     const response = (await client.extract(
-      buildParallelExtractParams([url], {
-        ...(options ?? {}),
+      buildParallelExtractParams([request.url], {
+        ...(request.options ?? {}),
       }) as never,
       buildRequestOptions(context),
     )) as unknown as ParallelExtractResponse;
 
     const outcome = pickSingleUrlOutcome(
-      url,
+      request.url,
       response.results,
       response.errors,
     );
@@ -186,11 +187,8 @@ function readObjectOption(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function createClient(config: Parallel): ParallelClient {
-  const apiKey = config.credentials?.api;
-  if (!apiKey) {
-    throw new Error("is missing an API key");
-  }
+function createClient(config: HttpProvider): ParallelClient {
+  const apiKey = requireApiKey(config);
 
   return new ParallelClient({
     maxRetries: 0,
@@ -204,31 +202,3 @@ function buildRequestOptions(
 ): { signal: AbortSignal } | undefined {
   return context.signal ? { signal: context.signal } : undefined;
 }
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: Parallel,
-    context: ProviderContext,
-  ) {
-    return await parallelImplementation.search(
-      input.query,
-      input.maxResults,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async contents(
-    input: import("../contract.js").ProviderRequest<"contents">,
-    config: Parallel,
-    context: ProviderContext,
-  ) {
-    return await parallelImplementation.contents(
-      input.url,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

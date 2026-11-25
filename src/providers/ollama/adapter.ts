@@ -1,88 +1,86 @@
 import { httpError } from "../../errors.js";
 import type { ContentsAnswer } from "../../domain.js";
-import type { ProviderContext, SearchResponse } from "../contract.js";
-import type { Ollama } from "./types.js";
-import { normalizeContentText, trimSnippet } from "../shared.js";
+import type {
+  HttpProvider,
+  ProviderContext,
+  ProviderRequest,
+  SearchResponse,
+} from "../contract.js";
+import { normalizeContentText, requireApiKey, trimSnippet } from "../shared.js";
 
 const DEFAULT_BASE_URL = "https://ollama.com";
 const WEB_SEARCH_PATH = "/api/web_search";
 const WEB_FETCH_PATH = "/api/web_fetch";
 
-async function searchOllama(
-  query: string,
-  maxResults: number,
-  config: Ollama,
-  context: Pick<ProviderContext, "signal">,
-): Promise<SearchResponse> {
-  const apiKey = resolveApiKey(config);
+export const adapter = {
+  async search(
+    request: ProviderRequest<"search">,
+    config: HttpProvider,
+    context: ProviderContext,
+  ): Promise<SearchResponse> {
+    const apiKey = requireApiKey(config);
 
-  const response = await fetch(
-    resolveEndpoint(config.baseUrl, WEB_SEARCH_PATH),
-    {
-      method: "POST",
-      headers: buildHeaders(apiKey),
-      body: JSON.stringify({
-        query,
-        max_results: clampMaxResults(maxResults),
-      }),
-      signal: context.signal,
-    },
-  );
+    const response = await fetch(
+      resolveEndpoint(config.baseUrl, WEB_SEARCH_PATH),
+      {
+        method: "POST",
+        headers: buildHeaders(apiKey),
+        body: JSON.stringify({
+          query: request.query,
+          max_results: clampMaxResults(request.maxResults),
+        }),
+        signal: context.signal,
+      },
+    );
 
-  if (!response.ok) {
-    throw httpError(response, await buildHttpError(response));
-  }
+    if (!response.ok) {
+      throw httpError(response, await buildHttpError(response));
+    }
 
-  const data = (await response.json()) as OllamaSearchResponse;
-  const results = Array.isArray(data.results) ? data.results : [];
+    const data = (await response.json()) as OllamaSearchResponse;
+    const results = Array.isArray(data.results) ? data.results : [];
 
-  return {
-    provider: "ollama",
-    results: results.slice(0, clampMaxResults(maxResults)).map((result) => ({
-      title: result.title,
-      url: result.url ?? "",
-      snippet: trimSnippet(result.content),
-    })),
-  };
-}
+    return {
+      results: results
+        .slice(0, clampMaxResults(request.maxResults))
+        .map((result) => ({
+          title: result.title,
+          url: result.url ?? "",
+          snippet: trimSnippet(result.content),
+        })),
+    };
+  },
 
-async function fetchOllamaContents(
-  url: string,
-  config: Ollama,
-  context: Pick<ProviderContext, "signal">,
-): Promise<ContentsAnswer> {
-  const apiKey = resolveApiKey(config);
-  const response = await fetch(
-    resolveEndpoint(config.baseUrl, WEB_FETCH_PATH),
-    {
-      method: "POST",
-      headers: buildHeaders(apiKey),
-      body: JSON.stringify({ url }),
-      signal: context.signal,
-    },
-  );
+  async contents(
+    request: ProviderRequest<"contents">,
+    config: HttpProvider,
+    context: ProviderContext,
+  ): Promise<ContentsAnswer> {
+    const apiKey = requireApiKey(config);
+    const response = await fetch(
+      resolveEndpoint(config.baseUrl, WEB_FETCH_PATH),
+      {
+        method: "POST",
+        headers: buildHeaders(apiKey),
+        body: JSON.stringify({ url: request.url }),
+        signal: context.signal,
+      },
+    );
 
-  if (!response.ok) {
-    throw httpError(response, await buildHttpError(response));
-  }
+    if (!response.ok) {
+      throw httpError(response, await buildHttpError(response));
+    }
 
-  const data = (await response.json()) as OllamaFetchResponse;
-  const content = normalizeContentText(data.content);
-  const metadata = buildFetchMetadata(data);
-  return {
-    url,
-    content,
-    ...(metadata ? { metadata } : {}),
-  };
-}
-
-function resolveApiKey(config: Ollama): string {
-  const apiKey = config.credentials?.api;
-  if (!apiKey) {
-    throw new Error("is missing an API key");
-  }
-  return apiKey;
-}
+    const data = (await response.json()) as OllamaFetchResponse;
+    const content = normalizeContentText(data.content);
+    const metadata = buildFetchMetadata(data);
+    return {
+      url: request.url,
+      content,
+      ...(metadata ? { metadata } : {}),
+    };
+  },
+};
 
 function buildHeaders(apiKey: string): HeadersInit {
   return {
@@ -173,20 +171,3 @@ function buildFetchMetadata(
   }
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: Ollama,
-    context: ProviderContext,
-  ) {
-    return await searchOllama(input.query, input.maxResults, config, context);
-  },
-  async contents(
-    input: import("../contract.js").ProviderRequest<"contents">,
-    config: Ollama,
-    context: ProviderContext,
-  ) {
-    return await fetchOllamaContents(input.url, config, context);
-  },
-};

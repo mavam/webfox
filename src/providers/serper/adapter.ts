@@ -1,12 +1,20 @@
 import { httpError } from "../../errors.js";
 import type {
   ProviderContext,
+  ProviderRequest,
   SearchResponse,
   SearchResult,
 } from "../contract.js";
 import type { Serper, SerperSearchMode } from "./types.js";
 import { SERPER_SEARCH_MODE_VALUES } from "./types.js";
-import { asJsonObject, trimSnippet } from "../shared.js";
+import {
+  asJsonObject,
+  asRecord,
+  readInteger,
+  readString,
+  requireApiKey,
+  trimSnippet,
+} from "../shared.js";
 
 const DEFAULT_BASE_URL = "https://google.serper.dev";
 const DEFAULT_SCRAPE_URL = "https://scrape.serper.dev";
@@ -96,26 +104,21 @@ const CONTEXT_ARRAY_FIELDS = [
   "suggestions",
 ] as const;
 
-const serperImplementation = {
+export const adapter = {
   async search(
-    query: string,
-    maxResults: number,
+    request: ProviderRequest<"search">,
     config: Serper,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
-    const apiKey = config.credentials?.api;
-    if (!apiKey) {
-      throw new Error("is missing an API key");
-    }
+    const apiKey = requireApiKey(config);
 
-    const callOptions = asJsonObject(options);
+    const callOptions = asJsonObject(request.options);
     const requestOptions = readRequestOptions({
       ...callOptions,
     });
     const requestBody = buildRequestBody(
-      query,
-      clampMaxResults(maxResults),
+      request.query,
+      clampMaxResults(request.maxResults),
       requestOptions,
     );
 
@@ -146,7 +149,6 @@ const serperImplementation = {
     );
 
     return {
-      provider: "serper",
       results: results
         .map((entry) =>
           toSearchResult(entry, searchContext, requestOptions.mode),
@@ -154,7 +156,7 @@ const serperImplementation = {
         .filter(
           (result): result is NonNullable<typeof result> => result !== null,
         )
-        .slice(0, clampMaxResults(maxResults)),
+        .slice(0, clampMaxResults(request.maxResults)),
     };
   },
 };
@@ -591,18 +593,8 @@ function omitUndefined(
   );
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
 function asArray(value: unknown): unknown[] | undefined {
   return Array.isArray(value) ? value : undefined;
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }
 
 function readNumber(value: unknown): number | undefined {
@@ -611,28 +603,6 @@ function readNumber(value: unknown): number | undefined {
     : undefined;
 }
 
-function readInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value)
-    ? value
-    : undefined;
-}
-
 function readBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: Serper,
-    context: ProviderContext,
-  ) {
-    return await serperImplementation.search(
-      input.query,
-      input.maxResults,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

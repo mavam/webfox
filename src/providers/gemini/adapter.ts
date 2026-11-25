@@ -2,36 +2,37 @@ import { httpError } from "../../errors.js";
 
 import { executeAsyncResearch } from "../../runtime/polling.js";
 import type {
+  Provider as Gemini,
   ProviderContext,
+  ProviderRequest,
   ResearchJob,
   ResearchPollResult,
   SourceInput,
   ToolOutput,
 } from "../contract.js";
-import type { Gemini } from "./types.js";
+import { readNonEmptyString, requireApiKey } from "../shared.js";
 
 const DEFAULT_ANSWER_MODEL = "gemini-3.8-flash";
 const DEFAULT_RESEARCH_AGENT = "deep-research-preview-04-2026";
 
-export const geminiImplementation = {
+export const adapter = {
   async answer(
-    query: string,
+    request: ProviderRequest<"answer">,
     config: Gemini,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
-    const request = buildGeminiGenerateContentRequest({
+    const built = buildGeminiGenerateContentRequest({
       defaultModel: DEFAULT_ANSWER_MODEL,
-      prompt: query,
-      options,
+      prompt: request.query,
+      options: request.options,
       toolConfig: { googleSearch: {} },
     });
 
     const response = await requestGemini(
-      `models/${encodeURIComponent(request.model.replace(/^models\//, ""))}:generateContent`,
+      `models/${encodeURIComponent(built.model.replace(/^models\//, ""))}:generateContent`,
       config,
       context,
-      request.body,
+      built.body,
     );
     const candidate = Array.isArray(response.candidates)
       ? asRecord(response.candidates[0])
@@ -50,7 +51,6 @@ export const geminiImplementation = {
           .trim()
       : "";
     return {
-      provider: "gemini",
       text,
       sources: extractGroundingSources(
         asRecord(candidate.groundingMetadata).groundingChunks,
@@ -59,107 +59,102 @@ export const geminiImplementation = {
   },
 
   async research(
-    input: string,
+    request: ProviderRequest<"research">,
     config: Gemini,
     context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ToolOutput> {
     return await executeAsyncResearch({
       providerLabel: "Gemini",
-      providerId: "gemini",
       context,
       start: (researchContext) =>
-        this.startResearch(input, config, researchContext, options),
-      poll: (id, researchContext) =>
-        this.pollResearch(id, config, researchContext, options),
+        startResearch(request.input, config, researchContext, request.options),
+      poll: (id, researchContext) => pollResearch(id, config, researchContext),
     });
   },
-
-  async startResearch(
-    input: string,
-    config: Gemini,
-    context: ProviderContext,
-    options?: Record<string, unknown>,
-  ): Promise<ResearchJob> {
-    const requestOptions = getGeminiResearchRequestOptions(options);
-    const interaction = await requestGemini(
-      "interactions",
-      config,
-      context,
-      {
-        ...requestOptions,
-        input,
-        agent: DEFAULT_RESEARCH_AGENT,
-        background: true,
-      },
-      context.idempotencyKey,
-    );
-
-    const id = readNonEmptyString(interaction.id);
-    if (!id) {
-      throw new Error("Gemini research response is missing an interaction ID.");
-    }
-    return { id };
-  },
-
-  async pollResearch(
-    id: string,
-    config: Gemini,
-    context: ProviderContext,
-    _options?: Record<string, unknown>,
-  ): Promise<ResearchPollResult> {
-    const interaction = await requestGemini(
-      `interactions/${encodeURIComponent(id)}`,
-      config,
-      context,
-    );
-
-    const status = readNonEmptyString(interaction.status) ?? "unknown";
-
-    if (status === "completed") {
-      const text = formatInteractionSteps(readInteractionSteps(interaction));
-      return {
-        status: "completed",
-        output: {
-          provider: "gemini",
-          text,
-        },
-      };
-    }
-
-    if (status === "failed") {
-      return {
-        status: "failed",
-        error: "research failed",
-      };
-    }
-
-    if (status === "cancelled") {
-      return {
-        status: "cancelled",
-        error: "research was canceled",
-      };
-    }
-
-    if (status === "incomplete") {
-      return {
-        status: "failed",
-        error: "research ended incomplete",
-      };
-    }
-
-    if (status === "requires_action") {
-      return {
-        status: "failed",
-        error: describeGeminiRequiredAction(readInteractionSteps(interaction)),
-      };
-    }
-
-    return status === "in_progress"
-      ? { status: "in_progress" }
-      : { status: "in_progress", statusText: status };
-  },
 };
+
+export async function startResearch(
+  input: string,
+  config: Gemini,
+  context: ProviderContext,
+  options?: Record<string, unknown>,
+): Promise<ResearchJob> {
+  const requestOptions = getGeminiResearchRequestOptions(options);
+  const interaction = await requestGemini(
+    "interactions",
+    config,
+    context,
+    {
+      ...requestOptions,
+      input,
+      agent: DEFAULT_RESEARCH_AGENT,
+      background: true,
+    },
+    context.idempotencyKey,
+  );
+
+  const id = readNonEmptyString(interaction.id);
+  if (!id) {
+    throw new Error("Gemini research response is missing an interaction ID.");
+  }
+  return { id };
+}
+
+export async function pollResearch(
+  id: string,
+  config: Gemini,
+  context: ProviderContext,
+): Promise<ResearchPollResult> {
+  const interaction = await requestGemini(
+    `interactions/${encodeURIComponent(id)}`,
+    config,
+    context,
+  );
+
+  const status = readNonEmptyString(interaction.status) ?? "unknown";
+
+  if (status === "completed") {
+    const text = formatInteractionSteps(readInteractionSteps(interaction));
+    return {
+      status: "completed",
+      output: {
+        text,
+      },
+    };
+  }
+
+  if (status === "failed") {
+    return {
+      status: "failed",
+      error: "research failed",
+    };
+  }
+
+  if (status === "cancelled") {
+    return {
+      status: "cancelled",
+      error: "research was canceled",
+    };
+  }
+
+  if (status === "incomplete") {
+    return {
+      status: "failed",
+      error: "research ended incomplete",
+    };
+  }
+
+  if (status === "requires_action") {
+    return {
+      status: "failed",
+      error: describeGeminiRequiredAction(readInteractionSteps(interaction)),
+    };
+  }
+
+  return status === "in_progress"
+    ? { status: "in_progress" }
+    : { status: "in_progress", statusText: status };
+}
 
 // Keep retries in Webfox's runtime, not in the transport: submissions can bill.
 async function requestGemini(
@@ -169,8 +164,7 @@ async function requestGemini(
   body?: Record<string, unknown>,
   idempotencyKey?: string,
 ): Promise<Record<string, unknown>> {
-  const apiKey = config.credentials?.api;
-  if (!apiKey) throw new Error("is missing an API key");
+  const apiKey = requireApiKey(config);
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/${path}`,
@@ -417,36 +411,3 @@ function getGeminiDeepResearchAgentConfig(
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-function readNonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : undefined;
-}
-
-export const adapter = {
-  async answer(
-    input: import("../contract.js").ProviderRequest<"answer">,
-    config: Gemini,
-    context: ProviderContext,
-  ) {
-    return await geminiImplementation.answer(
-      input.query,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async research(
-    input: import("../contract.js").ProviderRequest<"research">,
-    config: Gemini,
-    context: ProviderContext,
-  ) {
-    return await geminiImplementation.research(
-      input.input,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

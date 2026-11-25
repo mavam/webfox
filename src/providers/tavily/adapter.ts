@@ -7,34 +7,36 @@ import {
 
 import type { ContentsAnswer } from "../../domain.js";
 import { WebfoxError } from "../../errors.js";
-import type { ProviderContext, SearchResponse } from "../contract.js";
-import type { Tavily } from "./types.js";
+import type {
+  HttpProvider,
+  ProviderContext,
+  ProviderRequest,
+  SearchResponse,
+} from "../contract.js";
 
 import {
   ambiguousContentsError,
   omittedContentsError,
   pickSingleUrlOutcome,
+  requireApiKey,
   trimSnippet,
 } from "../shared.js";
 
-const tavilyImplementation = {
+export const adapter = {
   async search(
-    query: string,
-    maxResults: number,
-    config: Tavily,
+    request: ProviderRequest<"search">,
+    config: HttpProvider,
     _context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<SearchResponse> {
     const client = createClient(config);
 
-    const response = await client.search(query, {
-      ...(options ?? {}),
-      maxResults,
+    const response = await client.search(request.query, {
+      ...(request.options ?? {}),
+      maxResults: request.maxResults,
     });
 
     return {
-      provider: "tavily",
-      results: response.results.slice(0, maxResults).map((result) => ({
+      results: response.results.slice(0, request.maxResults).map((result) => ({
         title: result.title,
         url: result.url || "",
         snippet: trimSnippet(result.content ?? result.rawContent),
@@ -45,19 +47,18 @@ const tavilyImplementation = {
   },
 
   async contents(
-    url: string,
-    config: Tavily,
+    request: ProviderRequest<"contents">,
+    config: HttpProvider,
     _context: ProviderContext,
-    options?: Record<string, unknown>,
   ): Promise<ContentsAnswer> {
     const client = createClient(config);
 
-    const response = await client.extract([url], {
-      ...(options ?? {}),
+    const response = await client.extract([request.url], {
+      ...(request.options ?? {}),
     });
 
     const outcome = pickSingleUrlOutcome(
-      url,
+      request.url,
       response.results,
       response.failedResults,
     );
@@ -85,14 +86,9 @@ const tavilyImplementation = {
   },
 };
 
-function createClient(config: Tavily): TavilyClient {
-  const apiKey = config.credentials?.api;
-  if (!apiKey) {
-    throw new Error("is missing an API key");
-  }
-
+function createClient(config: HttpProvider): TavilyClient {
   return tavily({
-    apiKey,
+    apiKey: requireApiKey(config),
     apiBaseURL: config.baseUrl,
   });
 }
@@ -134,31 +130,3 @@ function buildExtractMetadata(
 
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
-
-export const adapter = {
-  async search(
-    input: import("../contract.js").ProviderRequest<"search">,
-    config: Tavily,
-    context: ProviderContext,
-  ) {
-    return await tavilyImplementation.search(
-      input.query,
-      input.maxResults,
-      config,
-      context,
-      input.options,
-    );
-  },
-  async contents(
-    input: import("../contract.js").ProviderRequest<"contents">,
-    config: Tavily,
-    context: ProviderContext,
-  ) {
-    return await tavilyImplementation.contents(
-      input.url,
-      config,
-      context,
-      input.options,
-    );
-  },
-};

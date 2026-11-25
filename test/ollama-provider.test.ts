@@ -3,8 +3,8 @@ import type { ContentsAnswer } from "../src/domain.js";
 import { adapter } from "../src/providers/ollama/adapter.js";
 import { ollamaProvider } from "../src/providers/ollama/definition.js";
 import { createWebfox } from "../src/index.js";
-import type { Ollama } from "../src/providers/ollama/types.js";
 import type {
+  HttpProvider as Ollama,
   ProviderContext,
   SearchResponse,
 } from "../src/providers/contract.js";
@@ -125,7 +125,6 @@ describe("ollamaProvider", () => {
     );
 
     expect(response).toEqual({
-      provider: "ollama",
       results: [
         {
           title: "Ollama",

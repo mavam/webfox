@@ -305,7 +305,6 @@ describe("providerHarness(firecrawlProvider)", () => {
       },
     ]);
     expect(response).toEqual({
-      provider: "firecrawl",
       text: "The page says Firecrawl supports question scraping.",
       sources: [
         { url: "https://docs.firecrawl.dev/features/scrape#question-format" },

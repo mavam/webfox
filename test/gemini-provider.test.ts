@@ -1,11 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   adapter,
-  geminiImplementation as provider,
+  pollResearch,
+  startResearch,
 } from "../src/providers/gemini/adapter.js";
 import { createWebfox, parseConfig } from "../src/index.js";
 import { asWebfoxError } from "../src/errors.js";
-import type { ProviderContext } from "../src/providers/contract.js";
+import type {
+  Provider as Gemini,
+  ProviderContext,
+} from "../src/providers/contract.js";
+
+const provider = {
+  answer: (
+    query: string,
+    cfg: Gemini,
+    ctx: ProviderContext,
+    options?: Record<string, unknown>,
+  ) => adapter.answer({ capability: "answer", query, options }, cfg, ctx),
+  startResearch,
+  pollResearch,
+};
 
 const config = { credentials: { api: "literal-key" } };
 const context: ProviderContext = { cwd: process.cwd() };
@@ -40,7 +55,7 @@ describe("Gemini capability boundaries", () => {
     expect(info.capabilities).toEqual(["answer", "research"]);
     expect(info.configured).toEqual(["answer", "research"]);
     expect("search" in adapter).toBe(false);
-    expect("contents" in provider).toBe(false);
+    expect("contents" in adapter).toBe(false);
     await expect(
       client.search({ provider: "gemini", queries: ["test"] }),
     ).rejects.toThrow("does not support search");
@@ -62,7 +77,6 @@ describe("Gemini HTTP answers", () => {
   it("defaults to Gemini 3.8 Flash with Google Search grounding", async () => {
     const fetchMock = mockResponse(answerPayload());
     expect(await provider.answer("Question", config, context)).toEqual({
-      provider: "gemini",
       text: "Answer",
       sources: [],
     });
@@ -301,7 +315,7 @@ describe("Gemini HTTP research", () => {
     });
     expect(await provider.pollResearch("job", config, context)).toEqual({
       status: "completed",
-      output: { provider: "gemini", text: "Report\n\nConclusion" },
+      output: { text: "Report\n\nConclusion" },
     });
   });
 
