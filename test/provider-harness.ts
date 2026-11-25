@@ -34,11 +34,11 @@ export function providerHarness(provider: ProviderDefinition): any {
       options?: Record<string, unknown>,
     ) => execute("search", { query, maxResults, options }, config, context),
     contents: (
-      urls: string[],
+      url: string,
       config: ProviderConfig,
       context: ProviderContext,
       options?: Record<string, unknown>,
-    ) => execute("contents", { urls, options }, config, context),
+    ) => execute("contents", { url, options }, config, context),
     answer: (
       query: string,
       config: ProviderConfig,

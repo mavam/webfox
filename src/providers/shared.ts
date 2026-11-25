@@ -1,5 +1,12 @@
 import { httpError, WebfoxError } from "../errors.js";
 
+export function omittedContentsError(): WebfoxError {
+  return new WebfoxError(
+    "PROVIDER_FAILURE",
+    "The provider omitted a result for this URL.",
+  );
+}
+
 export function trimSnippet(
   input: string | undefined,
   maxLength = 300,

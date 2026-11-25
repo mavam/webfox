@@ -1,4 +1,3 @@
-import { omittedContents, orderedContents } from "../../contents.js";
 import {
   type TavilyClient,
   type TavilyExtractResponse,
@@ -6,11 +5,12 @@ import {
   tavily,
 } from "@tavily/core";
 
-import type { ContentsResponse } from "../../contents.js";
+import type { ContentsAnswer } from "../../domain.js";
+import { WebfoxError } from "../../errors.js";
 import type { ProviderContext, SearchResponse } from "../contract.js";
 import type { Tavily } from "./types.js";
 
-import { trimSnippet } from "../shared.js";
+import { omittedContentsError, trimSnippet } from "../shared.js";
 
 const tavilyImplementation = {
   async search(
@@ -40,57 +40,41 @@ const tavilyImplementation = {
   },
 
   async contents(
-    urls: string[],
+    url: string,
     config: Tavily,
     _context: ProviderContext,
     options?: Record<string, unknown>,
-  ): Promise<ContentsResponse> {
+  ): Promise<ContentsAnswer> {
     const client = createClient(config);
 
-    const response = await client.extract(urls, {
+    const response = await client.extract([url], {
       ...(options ?? {}),
     });
 
-    const resultsByUrl = new Map(
-      response.results.map((result) => [result.url, result] as const),
-    );
-    const failedResultsByUrl = new Map(
-      response.failedResults.map((result) => [result.url, result] as const),
-    );
+    const result =
+      response.results.find((entry) => entry.url === url) ??
+      response.results[0];
+    if (result) {
+      return {
+        url: result.url,
+        ...(typeof result.rawContent === "string"
+          ? { content: result.rawContent }
+          : {}),
+        metadata: buildExtractMetadata(response, result),
+      };
+    }
 
-    return {
-      provider: "tavily",
-      answers: urls.map((url) => {
-        const result =
-          resultsByUrl.get(url) ??
-          (urls.length === 1 && response.results.length === 1
-            ? response.results[0]
-            : undefined);
-        if (result) {
-          return {
-            url: result.url,
-            ...(typeof result.rawContent === "string"
-              ? { content: result.rawContent }
-              : {}),
-            metadata: buildExtractMetadata(response, result),
-          };
-        }
+    const failedResult =
+      response.failedResults.find((entry) => entry.url === url) ??
+      response.failedResults[0];
+    if (failedResult) {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        failedResult.error || "Content extraction failed.",
+      );
+    }
 
-        const failedResult =
-          failedResultsByUrl.get(url) ??
-          (urls.length === 1 && response.failedResults.length === 1
-            ? response.failedResults[0]
-            : undefined);
-        if (failedResult) {
-          return {
-            url,
-            error: failedResult.error || "Content extraction failed.",
-          };
-        }
-
-        return omittedContents(url);
-      }),
-    };
+    throw omittedContentsError();
   },
 };
 
@@ -163,13 +147,11 @@ export const adapter = {
     config: Tavily,
     context: ProviderContext,
   ) {
-    return orderedContents(
-      await tavilyImplementation.contents(
-        input.urls,
-        config,
-        context,
-        input.options,
-      ),
+    return await tavilyImplementation.contents(
+      input.url,
+      config,
+      context,
+      input.options,
     );
   },
 };

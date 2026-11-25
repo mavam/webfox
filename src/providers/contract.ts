@@ -1,9 +1,9 @@
 import type {
   Capability as Tool,
+  ContentsAnswer,
   ProviderId,
   SearchResult,
 } from "../domain.js";
-import type { IndexedContentsResponse } from "../contents.js";
 export interface SearchResponse {
   provider: ProviderId;
   results: SearchResult[];
@@ -55,7 +55,7 @@ export interface SearchRequest {
 
 export interface ContentsRequest {
   capability: "contents";
-  urls: string[];
+  url: string;
   options?: Record<string, unknown>;
 }
 
@@ -83,7 +83,7 @@ export type ProviderRequest<TTool extends Tool = Tool> =
 
 export interface ProviderResultMap {
   search: SearchResponse;
-  contents: IndexedContentsResponse;
+  contents: ContentsAnswer;
   answer: ToolOutput;
   research: ToolOutput;
 }

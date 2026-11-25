@@ -1,6 +1,5 @@
-import { asWebfoxError, httpError } from "../../errors.js";
-import { orderedContents } from "../../contents.js";
-import type { ContentsResponse } from "../../contents.js";
+import { httpError } from "../../errors.js";
+import type { ContentsAnswer } from "../../domain.js";
 import type { ProviderContext, SearchResponse } from "../contract.js";
 import type { Ollama } from "./types.js";
 import { normalizeContentText, trimSnippet } from "../shared.js";
@@ -48,54 +47,32 @@ async function searchOllama(
 }
 
 async function fetchOllamaContents(
-  urls: string[],
+  url: string,
   config: Ollama,
   context: Pick<ProviderContext, "signal">,
-): Promise<ContentsResponse> {
+): Promise<ContentsAnswer> {
   const apiKey = resolveApiKey(config);
-  const endpoint = resolveEndpoint(config.baseUrl, WEB_FETCH_PATH);
+  const response = await fetch(
+    resolveEndpoint(config.baseUrl, WEB_FETCH_PATH),
+    {
+      method: "POST",
+      headers: buildHeaders(apiKey),
+      body: JSON.stringify({ url }),
+      signal: context.signal,
+    },
+  );
 
+  if (!response.ok) {
+    throw httpError(response, await buildHttpError(response));
+  }
+
+  const data = (await response.json()) as OllamaFetchResponse;
+  const content = normalizeContentText(data.content);
+  const metadata = buildFetchMetadata(data);
   return {
-    provider: "ollama",
-    answers: await Promise.all(
-      urls.map(async (url) => {
-        try {
-          const response = await fetch(endpoint, {
-            method: "POST",
-            headers: buildHeaders(apiKey),
-            body: JSON.stringify({
-              url,
-            }),
-            signal: context.signal,
-          });
-
-          if (!response.ok) {
-            return {
-              url,
-              error: httpError(
-                response,
-                await buildHttpError(response),
-              ).toJSON(),
-            };
-          }
-
-          const data = (await response.json()) as OllamaFetchResponse;
-          const content = normalizeContentText(data.content);
-
-          const metadata = buildFetchMetadata(data);
-          return {
-            url,
-            content,
-            ...(metadata ? { metadata } : {}),
-          };
-        } catch (error) {
-          return {
-            url,
-            error: asWebfoxError(error).toJSON(),
-          };
-        }
-      }),
-    ),
+    url,
+    content,
+    ...(metadata ? { metadata } : {}),
   };
 }
 
@@ -210,8 +187,6 @@ export const adapter = {
     config: Ollama,
     context: ProviderContext,
   ) {
-    return orderedContents(
-      await fetchOllamaContents(input.urls, config, context),
-    );
+    return await fetchOllamaContents(input.url, config, context);
   },
 };

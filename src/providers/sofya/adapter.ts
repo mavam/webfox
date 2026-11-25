@@ -1,5 +1,5 @@
-import { orderedContents } from "../../contents.js";
-import { asWebfoxError, WebfoxError } from "../../errors.js";
+import type { ContentsAnswer } from "../../domain.js";
+import { WebfoxError } from "../../errors.js";
 import type {
   ProviderContext,
   ProviderRequest,
@@ -43,45 +43,32 @@ export const adapter = {
     request: ProviderRequest<"contents">,
     config: Sofya,
     context: ProviderContext,
-  ) {
-    // One URL per call keeps each page's result and error with its input.
-    const answers = await Promise.all(
-      request.urls.map(async (url) => {
-        try {
-          const payload = await sofyaRequest(config, context, "v1/fetch", {
-            ...asRecord(request.options),
-            urls: [url],
-          });
-          const result = Array.isArray(payload.results)
-            ? asRecord(payload.results[0])
-            : undefined;
-          if (!result) throw invalidResponse("fetch");
-          if (result.success === false) {
-            return { url, error: text(result.error) ?? "Fetch failed." };
-          }
-          const {
-            url: finalUrl,
-            content,
-            success: _s,
-            error: _e,
-            ...rest
-          } = result;
-          const metadata = Object.fromEntries(
-            Object.entries(rest).filter(
-              ([, value]) => value !== null && value !== "",
-            ),
-          );
-          return {
-            url: text(finalUrl) ?? url,
-            content: typeof content === "string" ? content : "",
-            ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-          };
-        } catch (error) {
-          return { url, error: asWebfoxError(error).toJSON() };
-        }
-      }),
+  ): Promise<ContentsAnswer> {
+    const payload = await sofyaRequest(config, context, "v1/fetch", {
+      ...asRecord(request.options),
+      urls: [request.url],
+    });
+    const result = Array.isArray(payload.results)
+      ? asRecord(payload.results[0])
+      : undefined;
+    if (!result) throw invalidResponse("fetch");
+    if (result.success === false) {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        text(result.error) ?? "Fetch failed.",
+      );
+    }
+    const { url: finalUrl, content, success: _s, error: _e, ...rest } = result;
+    const metadata = Object.fromEntries(
+      Object.entries(rest).filter(
+        ([, value]) => value !== null && value !== "",
+      ),
     );
-    return orderedContents({ provider: "sofya", answers });
+    return {
+      url: text(finalUrl) ?? request.url,
+      content: typeof content === "string" ? content : "",
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+    };
   },
 
   async answer(

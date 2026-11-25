@@ -109,7 +109,7 @@ describe("providerHarness(linkupProvider)", () => {
     ).rejects.toThrow(/only supports outputType 'searchResults'/);
   });
 
-  it("forwards Linkup fetch options per URL and preserves URL order", async () => {
+  it("forwards Linkup fetch options per URL and handles errors and empty pages", async () => {
     const calls = stubFetch(({ body }) => {
       if (body.url === "https://example.com/a") {
         return {
@@ -130,24 +130,32 @@ describe("providerHarness(linkupProvider)", () => {
       };
     });
 
-    const response = await providerHarness(linkupProvider).contents(
-      [
-        "https://example.com/a",
-        "https://example.com/b",
-        "https://example.com/c",
-      ],
+    const options = {
+      includeRawHtml: true,
+      renderJs: true,
+      extractImages: true,
+      retryCount: 2,
+    };
+    const harness = providerHarness(linkupProvider);
+    const pageA = await harness.contents(
+      "https://example.com/a",
       { credentials: { api: "literal-key" } },
       { cwd: process.cwd() },
-      {
-        ...{
-          includeRawHtml: true,
-        },
-        ...{
-          renderJs: true,
-          extractImages: true,
-          retryCount: 2,
-        },
-      },
+      options,
+    );
+    await expect(
+      harness.contents(
+        "https://example.com/b",
+        { credentials: { api: "literal-key" } },
+        { cwd: process.cwd() },
+        options,
+      ),
+    ).rejects.toThrow("blocked by robots");
+    const pageC = await harness.contents(
+      "https://example.com/c",
+      { credentials: { api: "literal-key" } },
+      { cwd: process.cwd() },
+      options,
     );
 
     expect(calls.map(({ url }) => url)).toEqual([
@@ -163,22 +171,13 @@ describe("providerHarness(linkupProvider)", () => {
         extractImages: true,
       })),
     );
-    expect(response.answers).toMatchObject([
-      {
-        inputIndex: 0,
-        url: "https://example.com/a",
-        content: "# Page A\n\nBody A",
-      },
-      {
-        inputIndex: 1,
-        url: "https://example.com/b",
-        error: { code: "PROVIDER_FAILURE", message: "blocked by robots" },
-      },
-      {
-        inputIndex: 2,
-        url: "https://example.com/c",
-      },
-    ]);
+    expect(pageA).toMatchObject({
+      url: "https://example.com/a",
+      content: "# Page A\n\nBody A",
+    });
+    expect(pageC).toEqual({
+      url: "https://example.com/c",
+    });
   });
 
   it("starts Linkup research, polls by id, and formats sourced answers", async () => {

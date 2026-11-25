@@ -1,52 +1,34 @@
-import { asWebfoxError } from "../../errors.js";
-import { orderedContents } from "../../contents.js";
 import CloudflareClient from "cloudflare";
 
-import type { ContentsResponse } from "../../contents.js";
+import type { ContentsAnswer } from "../../domain.js";
 import type { ProviderContext } from "../contract.js";
 import type { Cloudflare } from "./types.js";
 
 const cloudflareImplementation = {
   async contents(
-    urls: string[],
+    url: string,
     config: Cloudflare,
     context: ProviderContext,
     options?: Record<string, unknown>,
-  ): Promise<ContentsResponse> {
+  ): Promise<ContentsAnswer> {
     const client = createClient(config);
     const accountId = config.accountId;
     if (!accountId) {
       throw new Error("is missing an account ID");
     }
 
-    const answers = await Promise.all(
-      urls.map(async (url) => {
-        try {
-          const markdown = await client.browserRendering.markdown.create(
-            {
-              ...(options ?? {}),
-              account_id: accountId,
-              url,
-            } as never,
-            buildRequestOptions(context),
-          );
-
-          return {
-            url,
-            content: markdown,
-          };
-        } catch (error) {
-          return {
-            url,
-            error: asWebfoxError(error).toJSON(),
-          };
-        }
-      }),
+    const markdown = await client.browserRendering.markdown.create(
+      {
+        ...(options ?? {}),
+        account_id: accountId,
+        url,
+      } as never,
+      buildRequestOptions(context),
     );
 
     return {
-      provider: "cloudflare",
-      answers,
+      url,
+      content: markdown,
     };
   },
 };
@@ -75,13 +57,11 @@ export const adapter = {
     config: Cloudflare,
     context: ProviderContext,
   ) {
-    return orderedContents(
-      await cloudflareImplementation.contents(
-        input.urls,
-        config,
-        context,
-        input.options,
-      ),
+    return await cloudflareImplementation.contents(
+      input.url,
+      config,
+      context,
+      input.options,
     );
   },
 };

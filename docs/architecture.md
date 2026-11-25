@@ -58,11 +58,12 @@ one canonical shape: it omits blank search titles and page content, trims
 sources, drops sources without a URL or title, and derives `itemCount`. Only
 `src/render.ts` decides how empty results, untitled results, and sources look.
 
-Contents operations are scheduled one URL at a time. Adapters return explicit
-request-local indexes, not URL-based associations. The runtime rejects missing,
-duplicate, or out-of-range indexes. This preserves duplicate inputs and completed
-pages when another page times out; the requested URL and a reported final URL
-remain separate.
+Contents operations are scheduled one URL at a time. Adapters receive a single
+requested URL and return one page or throw on failure, while the runtime
+preserves batch input order, duplicate inputs, and completed pages when another
+page times out; the requested URL and a reported final URL remain separate.
+Custom provider subprocesses still use the v1 wire protocol (`input.urls` and
+indexed `answers`), validated by the custom adapter.
 
 The outward boundary redacts known credentials from strings, object keys,
 progress, results, and serialized errors. Public exceptions omit unsafe causes.

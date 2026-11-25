@@ -1,8 +1,8 @@
-import { omittedContents, orderedContents } from "../../contents.js";
 import { sleep, withSignal } from "../../runtime/lifecycle.js";
 
 import { type ContentResultSuccess, Valyu as ValyuClient } from "valyu-js";
-import type { ContentsResponse } from "../../contents.js";
+import type { ContentsAnswer } from "../../domain.js";
+import { WebfoxError } from "../../errors.js";
 import { executeAsyncResearch } from "../../runtime/polling.js";
 import type {
   ProviderContext,
@@ -13,7 +13,7 @@ import type {
 } from "../contract.js";
 import type { Valyu } from "./types.js";
 
-import { formatJson, trimSnippet } from "../shared.js";
+import { formatJson, omittedContentsError, trimSnippet } from "../shared.js";
 
 const valyuImplementation = {
   async search(
@@ -49,13 +49,13 @@ const valyuImplementation = {
   },
 
   async contents(
-    urls: string[],
+    url: string,
     config: Valyu,
     context: ProviderContext,
     options?: Record<string, unknown>,
-  ): Promise<ContentsResponse> {
+  ): Promise<ContentsAnswer> {
     const client = createClient(config);
-    const response = await client.contents(urls, {
+    const response = await client.contents([url], {
       ...(options ?? {}),
     } as never);
     let finalResponse;
@@ -81,42 +81,27 @@ const valyuImplementation = {
       throw new Error(finalResponse.error || "contents failed");
     }
 
-    const resultsByUrl = new Map(
-      (finalResponse.results ?? []).map(
-        (result) => [result.url, result] as const,
-      ),
-    );
+    const results = finalResponse.results ?? [];
+    const result = results.find((entry) => entry.url === url) ?? results[0];
+    if (!result) {
+      throw omittedContentsError();
+    }
 
+    if (result.status === "failed" || result.status === "not_found") {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        result.error ?? formatJson(result),
+      );
+    }
+    // TypeScript cannot narrow a two-valued discriminant across both checks.
+    const page = result as ContentResultSuccess;
     return {
-      provider: "valyu",
-      answers: urls.map((url) => {
-        const result =
-          resultsByUrl.get(url) ??
-          (urls.length === 1 && finalResponse.results?.length === 1
-            ? finalResponse.results[0]
-            : undefined);
-        if (!result) {
-          return omittedContents(url);
-        }
-
-        if (result.status === "failed" || result.status === "not_found") {
-          return {
-            url,
-            error: result.error ?? formatJson(result),
-          };
-        }
-        // TypeScript cannot narrow a two-valued discriminant across both checks.
-        const page = result as ContentResultSuccess;
-        return {
-          url: page.url,
-          ...(typeof page.content === "string" ||
-          typeof page.content === "number"
-            ? { content: String(page.content) }
-            : {}),
-          ...(page.summary !== undefined ? { summary: page.summary } : {}),
-          metadata: page as unknown as Record<string, unknown>,
-        };
-      }),
+      url: page.url,
+      ...(typeof page.content === "string" || typeof page.content === "number"
+        ? { content: String(page.content) }
+        : {}),
+      ...(page.summary !== undefined ? { summary: page.summary } : {}),
+      metadata: page as unknown as Record<string, unknown>,
     };
   },
 
@@ -269,13 +254,11 @@ export const adapter = {
     config: Valyu,
     context: ProviderContext,
   ) {
-    return orderedContents(
-      await valyuImplementation.contents(
-        input.urls,
-        config,
-        context,
-        input.options,
-      ),
+    return await valyuImplementation.contents(
+      input.url,
+      config,
+      context,
+      input.options,
     );
   },
   async answer(

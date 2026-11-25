@@ -68,12 +68,11 @@ it("rejects Firecrawl responses without a success envelope", async () => {
     providerHarness(firecrawlProvider).search("q", 3, config, context),
   ).rejects.toThrow("upstream failure");
 
-  const contents = await providerHarness(firecrawlProvider).contents(
-    ["https://example.com"],
-    config,
-    context,
-  );
-  expect(contents.answers).toMatchObject([
-    { url: "https://example.com", error: { message: "upstream failure" } },
-  ]);
+  await expect(
+    providerHarness(firecrawlProvider).contents(
+      "https://example.com",
+      config,
+      context,
+    ),
+  ).rejects.toThrow("upstream failure");
 });

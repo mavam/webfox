@@ -1,6 +1,5 @@
-import { asWebfoxError, WebfoxError } from "../../errors.js";
-import { orderedContents } from "../../contents.js";
-import type { ContentsResponse } from "../../contents.js";
+import { WebfoxError } from "../../errors.js";
+import type { ContentsAnswer } from "../../domain.js";
 import type {
   ProviderContext,
   SearchResponse,
@@ -57,11 +56,11 @@ const firecrawlImplementation = {
   },
 
   async contents(
-    urls: string[],
+    url: string,
     config: Firecrawl,
     context: ProviderContext,
     options?: Record<string, unknown>,
-  ): Promise<ContentsResponse> {
+  ): Promise<ContentsAnswer> {
     // `autoResume` is an SDK-side retry loop, not an API field.
     const { autoResume: _autoResume, ...callOptions } = options ?? {};
     const scrapeOptions = {
@@ -71,38 +70,23 @@ const firecrawlImplementation = {
       ...callOptions,
     };
 
+    const response = await firecrawlRequest(
+      config,
+      "/v2/scrape",
+      { ...scrapeOptions, url: url.trim() },
+      context.signal,
+      "Firecrawl scrape failed.",
+    );
+    const document = (asRecord(response.data) ?? {}) as FirecrawlDocument;
+    const content = getDocumentContent(document);
     return {
-      provider: "firecrawl",
-      answers: await Promise.all(
-        urls.map(async (url) => {
-          try {
-            const response = await firecrawlRequest(
-              config,
-              "/v2/scrape",
-              { ...scrapeOptions, url: url.trim() },
-              context.signal,
-              "Firecrawl scrape failed.",
-            );
-            const document = (asRecord(response.data) ??
-              {}) as FirecrawlDocument;
-            const content = getDocumentContent(document);
-            return {
-              url,
-              ...(content ? { content } : {}),
-              ...(asRecord(document.metadata)
-                ? {
-                    metadata: document.metadata as Record<string, unknown>,
-                  }
-                : {}),
-            };
-          } catch (error) {
-            return {
-              url,
-              error: asWebfoxError(error).toJSON(),
-            };
+      url,
+      ...(content ? { content } : {}),
+      ...(asRecord(document.metadata)
+        ? {
+            metadata: document.metadata as Record<string, unknown>,
           }
-        }),
-      ),
+        : {}),
     };
   },
 
@@ -359,13 +343,11 @@ export const adapter = {
     config: Firecrawl,
     context: ProviderContext,
   ) {
-    return orderedContents(
-      await firecrawlImplementation.contents(
-        input.urls,
-        config,
-        context,
-        input.options,
-      ),
+    return await firecrawlImplementation.contents(
+      input.url,
+      config,
+      context,
+      input.options,
     );
   },
   async answer(

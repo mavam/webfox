@@ -79,7 +79,7 @@ describe("contents providers", () => {
     );
 
     const result = await provider.contents(
-      ["https://developers.cloudflare.com/browser-rendering/"],
+      "https://developers.cloudflare.com/browser-rendering/",
       { credentials: { api: "literal-token" }, accountId: "account-id" },
       { cwd: process.cwd() },
       {
@@ -109,8 +109,7 @@ describe("contents providers", () => {
       },
       undefined,
     );
-    expect(result.answers[0]).toMatchObject({
-      inputIndex: 0,
+    expect(result).toMatchObject({
       url: "https://developers.cloudflare.com/browser-rendering/",
       content: "# Cloudflare Docs\n\nRendered content",
     });
@@ -133,7 +132,7 @@ describe("contents providers", () => {
     }));
 
     const result = await provider.contents(
-      ["https://example.com"],
+      "https://example.com",
       {
         credentials: { api: "literal-key" },
       },
@@ -148,8 +147,7 @@ describe("contents providers", () => {
         body: { urls: ["https://example.com"] },
       }),
     ]);
-    expect(result.answers).toHaveLength(1);
-    expect(result.answers[0]).toMatchObject({
+    expect(result).toMatchObject({
       url: "https://example.com",
       content: `Heading\n\n${longParagraph}`,
       summary: "short summary",
@@ -162,7 +160,7 @@ describe("contents providers", () => {
     });
   });
 
-  it("reports Valyu not_found pages as per-URL errors", async () => {
+  it("reports Valyu not_found pages as errors", async () => {
     const { valyuProvider } = await import(
       "../src/providers/valyu/definition.js"
     );
@@ -179,19 +177,14 @@ describe("contents providers", () => {
       ],
     });
 
-    const result = await provider.contents(
-      ["https://valyu.ai/missing"],
-      { credentials: { api: "literal-key" } },
-      { cwd: process.cwd() },
-      undefined,
-    );
-
-    expect(result.answers).toMatchObject([
-      {
-        url: "https://valyu.ai/missing",
-        error: { code: "PROVIDER_FAILURE", message: "Page not found" },
-      },
-    ]);
+    await expect(
+      provider.contents(
+        "https://valyu.ai/missing",
+        { credentials: { api: "literal-key" } },
+        { cwd: process.cwd() },
+        undefined,
+      ),
+    ).rejects.toThrow("Page not found");
   });
 
   it("prefers Valyu content over summaries and preserves line breaks", async () => {
@@ -213,7 +206,7 @@ describe("contents providers", () => {
     });
 
     const result = await provider.contents(
-      ["https://valyu.ai/docs"],
+      "https://valyu.ai/docs",
       {
         credentials: { api: "literal-key" },
       },
@@ -221,7 +214,7 @@ describe("contents providers", () => {
       undefined,
     );
 
-    expect(result.answers[0]).toMatchObject({
+    expect(result).toMatchObject({
       url: "https://valyu.ai/docs",
       content: "Intro\n\n- Item 1\n- Item 2",
       summary: "summary only",

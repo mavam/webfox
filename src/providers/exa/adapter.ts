@@ -1,7 +1,4 @@
-import { omittedContents, orderedContents } from "../../contents.js";
-
-import type { ContentsResponse } from "../../contents.js";
-import { WebfoxError } from "../../errors.js";
+import type { ContentsAnswer } from "../../domain.js";
 import type {
   ProviderContext,
   SearchResponse,
@@ -9,7 +6,13 @@ import type {
 } from "../contract.js";
 import type { Exa } from "./types.js";
 
-import { formatJson, joinUrl, requestJson, trimSnippet } from "../shared.js";
+import {
+  formatJson,
+  joinUrl,
+  omittedContentsError,
+  requestJson,
+  trimSnippet,
+} from "../shared.js";
 
 const DEFAULT_BASE_URL = "https://api.exa.ai";
 // Exa's API returns no page text unless asked; match its SDK's search default.
@@ -63,35 +66,28 @@ const exaImplementation = {
   },
 
   async contents(
-    urls: string[],
+    url: string,
     config: Exa,
     context: ProviderContext,
     options?: Record<string, unknown>,
-  ): Promise<ContentsResponse> {
+  ): Promise<ContentsAnswer> {
     const response = (await exaRequest(
       config,
       "/contents",
-      { urls, ...(options ?? {}) },
+      { urls: [url], ...(options ?? {}) },
       context,
     )) as ExaSearchResponse;
 
-    const results = response.results ?? [];
+    const result = response.results?.[0];
+    if (!result) {
+      throw omittedContentsError();
+    }
 
     return {
-      provider: "exa",
-      answers: urls.map((url, index) => {
-        const result = results[index];
-        if (!result) {
-          return omittedContents(url);
-        }
-
-        return {
-          url: typeof result.url === "string" ? result.url : url,
-          ...(typeof result.text === "string" ? { content: result.text } : {}),
-          ...(result.summary !== undefined ? { summary: result.summary } : {}),
-          metadata: result as unknown as Record<string, unknown>,
-        };
-      }),
+      url: typeof result.url === "string" ? result.url : url,
+      ...(typeof result.text === "string" ? { content: result.text } : {}),
+      ...(result.summary !== undefined ? { summary: result.summary } : {}),
+      metadata: result as unknown as Record<string, unknown>,
     };
   },
 
@@ -237,13 +233,11 @@ export const adapter = {
     config: Exa,
     context: ProviderContext,
   ) {
-    return orderedContents(
-      await exaImplementation.contents(
-        input.urls,
-        config,
-        context,
-        input.options,
-      ),
+    return await exaImplementation.contents(
+      input.url,
+      config,
+      context,
+      input.options,
     );
   },
   async answer(

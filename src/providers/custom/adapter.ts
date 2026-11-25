@@ -1,5 +1,8 @@
-import type { IndexedContentsResponse } from "../../contents.js";
-import { type SerializedError, WEBFOX_ERROR_CODES } from "../../domain.js";
+import {
+  type ContentsAnswer,
+  type SerializedError,
+  WEBFOX_ERROR_CODES,
+} from "../../domain.js";
 import type { Custom } from "./types.js";
 import type {
   ProviderContext,
@@ -23,7 +26,9 @@ async function run(
       "PROVIDER_UNAVAILABLE",
       `Configure a custom ${request.capability} command.`,
     );
-  const { capability, options, ...input } = request;
+  const { capability, options, ...rest } = request;
+  // Preserve the v1 custom subprocess wire protocol (`input.urls`).
+  const input = capability === "contents" ? { urls: [request.url] } : rest;
   const output = await runCliJsonCommand({
     command,
     payload: {
@@ -71,36 +76,43 @@ export const adapter = {
     request: ProviderRequest<"contents">,
     config: Custom,
     context: ProviderContext,
-  ): Promise<IndexedContentsResponse> {
+  ): Promise<ContentsAnswer> {
     const output = await run(request, config, context);
     if (!Array.isArray(output.answers))
       invalid("Custom contents output requires an answers array.");
+    if (output.answers.length !== 1)
+      invalid(
+        "Provider returned missing, duplicate, or invalid contents input indexes.",
+      );
+    const answer = object(
+      output.answers[0],
+      "Contents answers must be objects.",
+    );
+    if (!Number.isInteger(answer.inputIndex))
+      invalid(
+        "Every custom contents answer requires inputIndex (the zero-based requested URL index).",
+      );
+    if (answer.inputIndex !== 0)
+      invalid(
+        "Provider returned missing, duplicate, or invalid contents input indexes.",
+      );
+    if (answer.error !== undefined) {
+      const error = parseError(answer.error);
+      throw new WebfoxError(error.code, error.message, {
+        retryable: error.retryable,
+      });
+    }
     return {
-      provider: "custom",
-      answers: output.answers.map((entry) => {
-        const answer = object(entry, "Contents answers must be objects.");
-        if (!Number.isInteger(answer.inputIndex))
-          invalid(
-            "Every custom contents answer requires inputIndex (the zero-based requested URL index).",
-          );
-        // A page without content, summary, or error is a valid empty page.
-        const error =
-          answer.error === undefined ? undefined : parseError(answer.error);
-        return {
-          inputIndex: answer.inputIndex as number,
-          url: string(answer.url, "url"),
-          ...(answer.content === undefined
-            ? {}
-            : { content: string(answer.content, "content") }),
-          ...(answer.summary === undefined ? {} : { summary: answer.summary }),
-          ...(answer.metadata
-            ? {
-                metadata: object(answer.metadata, "metadata must be an object"),
-              }
-            : {}),
-          ...(error ? { error } : {}),
-        };
-      }),
+      url: string(answer.url, "url"),
+      ...(answer.content === undefined
+        ? {}
+        : { content: string(answer.content, "content") }),
+      ...(answer.summary === undefined ? {} : { summary: answer.summary }),
+      ...(answer.metadata
+        ? {
+            metadata: object(answer.metadata, "metadata must be an object"),
+          }
+        : {}),
     };
   },
   async answer(

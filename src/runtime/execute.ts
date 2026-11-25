@@ -2,6 +2,7 @@ import type {
   Capability,
   CapabilityDocument,
   CapabilityValues,
+  ContentsAnswer,
   InputResult,
   RequestOptions,
   ProgressEvent,
@@ -125,41 +126,6 @@ export class ExecutionRuntime {
         input: string,
       ): Promise<InputResult<CapabilityValues[C]>> => {
         try {
-          if (capability === "contents") {
-            const response = (await this.run(
-              adapter,
-              config,
-              {
-                capability: "contents",
-                urls: [input],
-                options: plan.options,
-              },
-              plan,
-              context,
-            )) as ProviderResult<"contents">;
-            if (
-              response.answers.length !== 1 ||
-              response.answers[0].inputIndex !== 0
-            )
-              throw new WebfoxError(
-                "PROVIDER_FAILURE",
-                "Provider returned missing, duplicate, or invalid contents input indexes.",
-              );
-            const answer = response.answers[0];
-            if (answer.error)
-              throw new WebfoxError(answer.error.code, answer.error.message, {
-                retryable: answer.error.retryable,
-              });
-            const {
-              inputIndex: _index,
-              error: _error,
-              content,
-              ...rest
-            } = answer;
-            // An empty page is a result; omit blank content canonically.
-            const value = content?.trim() ? { ...rest, content } : rest;
-            return { input, ok: true, value: value as CapabilityValues[C] };
-          }
           const operation: ProviderRequest =
             capability === "search"
               ? {
@@ -168,9 +134,11 @@ export class ExecutionRuntime {
                   maxResults: plan.maxResults!,
                   options: plan.options,
                 }
-              : capability === "answer"
-                ? { capability, query: input, options: plan.options }
-                : { capability: "research", input, options: plan.options };
+              : capability === "contents"
+                ? { capability, url: input, options: plan.options }
+                : capability === "answer"
+                  ? { capability, query: input, options: plan.options }
+                  : { capability: "research", input, options: plan.options };
           const result = await this.run(
             adapter,
             config,
@@ -185,7 +153,9 @@ export class ExecutionRuntime {
                     .slice(0, plan.maxResults)
                     .map(searchValue),
                 }
-              : textValue(result as ProviderResult<"answer">);
+              : capability === "contents"
+                ? contentsValue(result as ProviderResult<"contents">)
+                : textValue(result as ProviderResult<"answer">);
           return { input, ok: true, value: value as CapabilityValues[C] };
         } catch (error) {
           return fail(input, error);
@@ -255,18 +225,10 @@ export class ExecutionRuntime {
       try {
         // Dispatch is safe because request, definition, and resolved config were
         // selected together in the plan; no SDK types enter the application API.
-        const result = await withSignal<ProviderResult>(
+        return await withSignal<ProviderResult>(
           execute(request as never, config, context),
           context.signal,
         );
-        if (request.capability === "contents") {
-          const page = (result as ProviderResult<"contents">).answers[0];
-          if (page?.error)
-            throw new WebfoxError(page.error.code, page.error.message, {
-              retryable: page.error.retryable,
-            });
-        }
-        return result;
       } catch (error) {
         if (context.signal!.aborted) throw context.signal!.reason;
         const normalized = asWebfoxError(error);
@@ -287,6 +249,10 @@ export class ExecutionRuntime {
 function searchValue({ title, ...result }: SearchResult): SearchResult {
   const trimmed = title?.trim();
   return trimmed ? { title: trimmed, ...result } : result;
+}
+function contentsValue({ content, ...rest }: ContentsAnswer): ContentsAnswer {
+  // An empty page is a result; omit blank content canonically.
+  return content?.trim() ? { ...rest, content } : rest;
 }
 function textValue(value: ProviderResult<"answer">) {
   const sources = value.sources?.flatMap(sourceValue);

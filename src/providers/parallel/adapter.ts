@@ -1,11 +1,11 @@
-import { omittedContents, orderedContents } from "../../contents.js";
 import ParallelClient from "parallel-web";
 
-import type { ContentsResponse } from "../../contents.js";
+import type { ContentsAnswer } from "../../domain.js";
+import { WebfoxError } from "../../errors.js";
 import type { ProviderContext, SearchResponse } from "../contract.js";
 import type { Parallel } from "./types.js";
 
-import { formatJson, trimSnippet } from "../shared.js";
+import { formatJson, omittedContentsError, trimSnippet } from "../shared.js";
 
 const parallelImplementation = {
   async search(
@@ -35,57 +35,39 @@ const parallelImplementation = {
   },
 
   async contents(
-    urls: string[],
+    url: string,
     config: Parallel,
     context: ProviderContext,
     options?: Record<string, unknown>,
-  ): Promise<ContentsResponse> {
+  ): Promise<ContentsAnswer> {
     const client = createClient(config);
 
     const response = (await client.extract(
-      buildParallelExtractParams(urls, {
+      buildParallelExtractParams([url], {
         ...(options ?? {}),
       }) as never,
       buildRequestOptions(context),
     )) as unknown as ParallelExtractResponse;
 
-    const resultsByUrl = new Map(
-      response.results.map((result) => [result.url, result] as const),
-    );
-    const errorsByUrl = new Map(
-      response.errors.map((error) => [error.url, error] as const),
-    );
+    const result =
+      response.results.find((entry) => entry.url === url) ??
+      response.results[0];
+    if (result) {
+      return {
+        url: result.url,
+        content:
+          result.full_content ?? result.excerpts?.join("\n\n") ?? undefined,
+        metadata: result as unknown as Record<string, unknown>,
+      };
+    }
 
-    return {
-      provider: "parallel",
-      answers: urls.map((url) => {
-        const result =
-          resultsByUrl.get(url) ??
-          (urls.length === 1 && response.results.length === 1
-            ? response.results[0]
-            : undefined);
-        if (result) {
-          return {
-            url: result.url,
-            content:
-              result.full_content ?? result.excerpts?.join("\n\n") ?? undefined,
-            metadata: result as unknown as Record<string, unknown>,
-          };
-        }
+    const error =
+      response.errors.find((entry) => entry.url === url) ?? response.errors[0];
+    if (error) {
+      throw new WebfoxError("PROVIDER_FAILURE", formatJson(error));
+    }
 
-        const error =
-          errorsByUrl.get(url) ??
-          (urls.length === 1 && response.errors.length === 1
-            ? response.errors[0]
-            : undefined);
-        return error
-          ? {
-              url,
-              error: formatJson(error),
-            }
-          : omittedContents(url);
-      }),
-    };
+    throw omittedContentsError();
   },
 };
 
@@ -233,13 +215,11 @@ export const adapter = {
     config: Parallel,
     context: ProviderContext,
   ) {
-    return orderedContents(
-      await parallelImplementation.contents(
-        input.urls,
-        config,
-        context,
-        input.options,
-      ),
+    return await parallelImplementation.contents(
+      input.url,
+      config,
+      context,
+      input.options,
     );
   },
 };

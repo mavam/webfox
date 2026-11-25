@@ -1,7 +1,5 @@
-import { asWebfoxError, WebfoxError } from "../../errors.js";
-import { orderedContents } from "../../contents.js";
-
-import type { ContentsResponse } from "../../contents.js";
+import { WebfoxError } from "../../errors.js";
+import type { ContentsAnswer } from "../../domain.js";
 import { executeAsyncResearch } from "../../runtime/polling.js";
 import type {
   ProviderContext,
@@ -135,47 +133,33 @@ const linkupImplementation = {
   },
 
   async contents(
-    urls: string[],
+    url: string,
     config: Linkup,
     context: ProviderContext,
     options?: Record<string, unknown>,
-  ): Promise<ContentsResponse> {
-    return {
-      provider: "linkup",
-      answers: await Promise.all(
-        urls.map(async (url) => {
-          try {
-            const response = (await linkupRequest(config, context, "/fetch", {
-              body: buildFetchParams(url, {
-                ...(options ?? {}),
-              }),
-            })) as FetchResponse;
+  ): Promise<ContentsAnswer> {
+    const response = (await linkupRequest(config, context, "/fetch", {
+      body: buildFetchParams(url, {
+        ...(options ?? {}),
+      }),
+    })) as FetchResponse;
 
-            const metadata = Object.fromEntries(
-              Object.entries(response).filter(
-                ([key, value]) =>
-                  [
-                    "rawContent",
-                    "rawHtml",
-                    "contentType",
-                    "images",
-                    "favicon",
-                  ].includes(key) && value !== undefined,
-              ),
-            );
-            return {
-              url,
-              ...(response.markdown ? { content: response.markdown } : {}),
-              ...(Object.keys(metadata).length ? { metadata } : {}),
-            };
-          } catch (error) {
-            return {
-              url,
-              error: asWebfoxError(error).toJSON(),
-            };
-          }
-        }),
+    const metadata = Object.fromEntries(
+      Object.entries(response).filter(
+        ([key, value]) =>
+          [
+            "rawContent",
+            "rawHtml",
+            "contentType",
+            "images",
+            "favicon",
+          ].includes(key) && value !== undefined,
       ),
+    );
+    return {
+      url,
+      ...(response.markdown ? { content: response.markdown } : {}),
+      ...(Object.keys(metadata).length ? { metadata } : {}),
     };
   },
 
@@ -584,13 +568,11 @@ export const adapter = {
     config: Linkup,
     context: ProviderContext,
   ) {
-    return orderedContents(
-      await linkupImplementation.contents(
-        input.urls,
-        config,
-        context,
-        input.options,
-      ),
+    return await linkupImplementation.contents(
+      input.url,
+      config,
+      context,
+      input.options,
     );
   },
   async research(
