@@ -148,7 +148,7 @@ export default function webExtension(pi: ExtensionAPI): void {
             await withFileMutationQueue(path, () =>
               writeFile(path, serialized, { mode: 0o600 }),
             );
-            return path;
+            return { path };
           },
         );
         // Preserve partial results while still reporting failed inputs as a

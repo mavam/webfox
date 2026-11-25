@@ -117,9 +117,17 @@ function splitLinesForCounting(content: string): string[] {
   return lines;
 }
 
+export type SpillWriteResult = { path: string } | { error: string };
+
+function sanitizeFooterValue(value: string): string {
+  return /[\x00-\x1f\x7f]/.test(value)
+    ? JSON.stringify(value).slice(1, -1)
+    : value;
+}
+
 export async function formatToolOutput(
   result: WebDocument,
-  writeSpill: (json: string) => Promise<string>,
+  writeSpill: (json: string) => Promise<SpillWriteResult>,
 ): Promise<{ body: string; json: string; fullOutputPath?: string }> {
   // The JSON round trip yields the exact document that the CLI prints,
   // free of undefined values and class instances.
@@ -129,19 +137,38 @@ export async function formatToolOutput(
   if (!initial.truncated) {
     return { body: initial.content, json };
   }
-  const fullOutputPath = await writeSpill(json);
-  const footer = `\n\nFull results: ${fullOutputPath}`;
+  const spilled = await writeSpill(json);
+  const fullOutputPath = "path" in spilled ? spilled.path : undefined;
+  let footer =
+    "path" in spilled
+      ? `\n\nFull results: ${sanitizeFooterValue(spilled.path)}`
+      : `\n\nFull results could not be saved: ${sanitizeFooterValue(spilled.error)}`;
   // Keep body + footer strictly within the 2000-line / 50 KiB ceiling so
   // host-side output limiters (such as Pi Durable's Harness) never clip the
-  // spill-file pointer.
+  // spill-file pointer or error notice.
+  if (Buffer.byteLength(footer, "utf-8") > DEFAULT_TOOL_MAX_BYTES) {
+    footer =
+      "path" in spilled
+        ? "\n\nFull results saved (path omitted: exceeds output budget)."
+        : "\n\nFull results could not be saved.";
+  }
   const footerBytes = Buffer.byteLength(footer, "utf-8");
-  const fitted = truncateHeadOutput(rendered, {
-    maxLines: Math.max(1, DEFAULT_TOOL_MAX_LINES - 2),
-    maxBytes: Math.max(0, DEFAULT_TOOL_MAX_BYTES - footerBytes),
-  });
+  const footerLines = footer.split("\n").length - 1;
+  const maxBodyLines = DEFAULT_TOOL_MAX_LINES - footerLines;
+  const maxBodyBytes = DEFAULT_TOOL_MAX_BYTES - footerBytes;
+  const fitted =
+    maxBodyLines > 0 && maxBodyBytes > 0
+      ? truncateHeadOutput(rendered, {
+          maxLines: maxBodyLines,
+          maxBytes: maxBodyBytes,
+        })
+      : { content: "" };
+  const body = fitted.content
+    ? `${fitted.content}${footer}`
+    : footer.trimStart();
   return {
-    body: `${fitted.content}${footer}`,
+    body,
     json,
-    fullOutputPath,
+    ...(fullOutputPath ? { fullOutputPath } : {}),
   };
 }

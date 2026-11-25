@@ -74,26 +74,54 @@ export function createWebfoxExtension(
             async (serialized) => {
               if (api.env) {
                 const dir = await api.env.createTempDir("web-", context);
-                if (!dir.ok) throw dir.error;
+                if (!dir.ok) {
+                  if (
+                    context.abortSignal?.aborted ||
+                    dir.error.code === "aborted"
+                  )
+                    throw dir.error;
+                  return { error: dir.error.message };
+                }
                 const path = await api.env.joinPath(
                   [dir.value, "result.json"],
                   context,
                 );
-                if (!path.ok) throw path.error;
+                if (!path.ok) {
+                  if (
+                    context.abortSignal?.aborted ||
+                    path.error.code === "aborted"
+                  )
+                    throw path.error;
+                  return { error: path.error.message };
+                }
                 const written = await api.env.writeFile(
                   path.value,
                   serialized,
                   context,
                 );
-                if (!written.ok) throw written.error;
-                return path.value;
+                if (!written.ok) {
+                  if (
+                    context.abortSignal?.aborted ||
+                    written.error.code === "aborted"
+                  )
+                    throw written.error;
+                  return { error: written.error.message };
+                }
+                return { path: path.value };
               }
-              const path = join(
-                await mkdtemp(join(tmpdir(), "web-")),
-                "result.json",
-              );
-              await writeFile(path, serialized, { mode: 0o600 });
-              return path;
+              try {
+                const path = join(
+                  await mkdtemp(join(tmpdir(), "web-")),
+                  "result.json",
+                );
+                await writeFile(path, serialized, { mode: 0o600 });
+                return { path };
+              } catch (error) {
+                if (context.abortSignal?.aborted) throw error;
+                return {
+                  error: error instanceof Error ? error.message : String(error),
+                };
+              }
             },
           );
           return {

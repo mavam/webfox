@@ -269,6 +269,13 @@ try {
       "--input-type=module",
       "--eval",
       [
+        'import { createRequire } from "node:module";',
+        'import { fileURLToPath } from "node:url";',
+        'const durableEntry = fileURLToPath(import.meta.resolve("webfox/durable"));',
+        "const requireFromDurable = createRequire(durableEntry);",
+        "let codingAgentResolvable = true;",
+        'try { requireFromDurable.resolve("@earendil-works/pi-coding-agent"); } catch { codingAgentResolvable = false; }',
+        'if (codingAgentResolvable) throw new Error("pi-coding-agent must not be resolvable from webfox/durable in a durable-only install");',
         'const { createWebfoxExtension } = await import("webfox/durable");',
         "const extension = createWebfoxExtension({ cwd: process.cwd() });",
         'const expected = ["web_answer", "web_contents", "web_research", "web_search"];',
