@@ -39,10 +39,10 @@ API ─┘                    └─ execution runtime ── lazy provider adap
 ## Execution invariants
 
 One operation deadline includes credential commands, retries, polling, and all
-inputs. SDK retries are disabled where configurable. Exa, Firecrawl, and Linkup
-use their HTTP APIs directly with one request per attempt and the operation
-signal. SDK methods without cancellation support are raced against the same
-signal. Late completions cannot publish further progress.
+inputs. All built-in HTTP providers call their REST APIs directly via `fetch`
+with one request per attempt and the operation `AbortSignal`—no provider SDKs
+are bundled or required at runtime. Late completions cannot publish further
+progress.
 
 Only structurally classified transient failures can retry, and only when the
 adapter declares the entire operation safe to repeat. Polling uses the runtime

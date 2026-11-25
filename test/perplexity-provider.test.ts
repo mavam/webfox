@@ -1,43 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-const { searchCreateMock, chatCreateMock, perplexityCtorMock } = vi.hoisted(
-  () => ({
-    searchCreateMock: vi.fn(),
-    chatCreateMock: vi.fn(),
-    perplexityCtorMock: vi.fn(),
-  }),
-);
-
-vi.mock("@perplexity-ai/perplexity_ai", () => ({
-  default: perplexityCtorMock.mockImplementation(function MockPerplexity() {
-    return {
-      search: {
-        create: searchCreateMock,
-      },
-      chat: {
-        completions: {
-          create: chatCreateMock,
-        },
-      },
-    };
-  }),
-}));
-
 import { perplexityProvider } from "../src/providers/perplexity/definition.js";
 import { providerHarness } from "./provider-harness.js";
+import { stubFetch } from "./fetch-stub.js";
 
 afterEach(() => {
   delete process.env.PERPLEXITY_API_KEY;
   delete process.env.PERPLEXITY_CUSTOM_HEADERS;
-  searchCreateMock.mockReset();
-  chatCreateMock.mockReset();
-  perplexityCtorMock.mockClear();
+  vi.unstubAllGlobals();
 });
 
 describe("Perplexity provider", () => {
   it("forwards merged search options and preserves date metadata", async () => {
-    process.env.PERPLEXITY_API_KEY = "test-key";
-    searchCreateMock.mockResolvedValue({
+    const calls = stubFetch(() => ({
       results: [
         {
           title: "Energy policy",
@@ -47,7 +21,7 @@ describe("Perplexity provider", () => {
           last_updated: "2026-03-05",
         },
       ],
-    });
+    }));
 
     const provider = providerHarness(perplexityProvider);
     const response = await provider.search(
@@ -56,31 +30,28 @@ describe("Perplexity provider", () => {
       { credentials: { api: "test-key" } },
       { cwd: process.cwd() },
       {
-        ...{
-          search_mode: "academic",
-        },
-        ...{
-          country: "US",
-          max_results: 99,
-        },
+        search_mode: "academic",
+        country: "US",
+        max_results: 99,
       },
     );
 
-    expect(perplexityCtorMock).toHaveBeenCalledWith({
-      maxRetries: 0,
-      apiKey: "test-key",
-      baseURL: undefined,
-      defaultHeaders: { "X-Pplx-Integration": "webfox" },
-    });
-    expect(searchCreateMock).toHaveBeenCalledWith(
-      {
-        search_mode: "academic",
-        country: "US",
-        query: "government policies on renewable energy",
-        max_results: 5,
-      },
-      undefined,
-    );
+    expect(calls).toEqual([
+      expect.objectContaining({
+        url: "https://api.perplexity.ai/search",
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer test-key",
+          "x-pplx-integration": "webfox",
+        }),
+        body: {
+          search_mode: "academic",
+          country: "US",
+          query: "government policies on renewable energy",
+          max_results: 5,
+        },
+      }),
+    ]);
     expect(response.results).toEqual([
       {
         title: "Energy policy",
@@ -95,8 +66,7 @@ describe("Perplexity provider", () => {
   });
 
   it("defaults answer calls to sonar and dedupes repeated sources", async () => {
-    process.env.PERPLEXITY_API_KEY = "test-key";
-    chatCreateMock.mockResolvedValue({
+    const calls = stubFetch(() => ({
       choices: [
         {
           message: {
@@ -115,27 +85,28 @@ describe("Perplexity provider", () => {
           url: "https://example.com/a",
         },
       ],
-    });
+    }));
 
     const provider = providerHarness(perplexityProvider);
     const response = await provider.answer(
       "What changed?",
-      {
-        credentials: { api: "test-key" },
-      },
+      { credentials: { api: "test-key" } },
       { cwd: process.cwd() },
       { country: "US" },
     );
 
-    expect(chatCreateMock).toHaveBeenCalledWith(
-      {
-        country: "US",
-        messages: [{ role: "user", content: "What changed?" }],
-        model: "sonar",
-        stream: false,
-      },
-      undefined,
-    );
+    expect(calls).toEqual([
+      expect.objectContaining({
+        url: "https://api.perplexity.ai/chat/completions",
+        method: "POST",
+        body: {
+          country: "US",
+          messages: [{ role: "user", content: "What changed?" }],
+          model: "sonar",
+          stream: false,
+        },
+      }),
+    ]);
     expect(response.text).toBe("Perplexity answer");
     expect(response.sources).toEqual([
       { url: "https://example.com/a", title: "Source A" },
@@ -143,68 +114,66 @@ describe("Perplexity provider", () => {
   });
 
   it("streams research calls with sonar-deep-research", async () => {
-    process.env.PERPLEXITY_API_KEY = "test-key";
-    chatCreateMock.mockResolvedValue({
-      async *[Symbol.asyncIterator]() {
-        yield {
-          choices: [
-            {
-              delta: {
-                role: "assistant",
-                content: "Research ",
-              },
-              message: {
-                role: "assistant",
-                content: null,
-              },
+    const sse = [
+      `data: ${JSON.stringify({
+        choices: [
+          {
+            delta: { role: "assistant", content: "Research " },
+            message: { role: "assistant", content: null },
+          },
+        ],
+      })}`,
+      "",
+      `data: ${JSON.stringify({
+        choices: [
+          {
+            delta: { role: "assistant", content: "result" },
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "Research result" }],
             },
-          ],
-        };
-        yield {
-          choices: [
-            {
-              delta: {
-                role: "assistant",
-                content: "result",
-              },
-              message: {
-                role: "assistant",
-                content: [{ type: "text", text: "Research result" }],
-              },
-            },
-          ],
-          citations: ["https://example.com/research"],
-        };
-      },
-    });
+          },
+        ],
+        citations: ["https://example.com/research"],
+      })}`,
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+
+    const calls = stubFetch(
+      () =>
+        new Response(sse, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+    );
 
     const provider = providerHarness(perplexityProvider);
     const response = await provider.research(
       "Investigate the topic",
-      {
-        credentials: { api: "test-key" },
-      },
-      {
-        cwd: process.cwd(),
-      },
+      { credentials: { api: "test-key" } },
+      { cwd: process.cwd() },
       undefined,
     );
 
-    expect(chatCreateMock).toHaveBeenCalledWith(
-      {
-        messages: [{ role: "user", content: "Investigate the topic" }],
-        model: "sonar-deep-research",
-        stream: true,
-      },
-      undefined,
-    );
+    expect(calls).toEqual([
+      expect.objectContaining({
+        url: "https://api.perplexity.ai/chat/completions",
+        method: "POST",
+        body: {
+          messages: [{ role: "user", content: "Investigate the topic" }],
+          model: "sonar-deep-research",
+          stream: true,
+        },
+      }),
+    ]);
     expect(response.text).toBe("Research result");
     expect(response.sources).toEqual([{ url: "https://example.com/research" }]);
   });
 
   it("falls back to citations when search_results is empty", async () => {
-    process.env.PERPLEXITY_API_KEY = "test-key";
-    chatCreateMock.mockResolvedValue({
+    stubFetch(() => ({
       choices: [
         {
           message: {
@@ -215,14 +184,12 @@ describe("Perplexity provider", () => {
       ],
       search_results: [],
       citations: ["https://example.com/fallback"],
-    });
+    }));
 
     const provider = providerHarness(perplexityProvider);
     const response = await provider.answer(
       "What changed?",
-      {
-        credentials: { api: "test-key" },
-      },
+      { credentials: { api: "test-key" } },
       { cwd: process.cwd() },
       undefined,
     );
@@ -240,7 +207,7 @@ describe("Perplexity provider", () => {
   ])(
     "sets the integration header only for the Perplexity API host (%s)",
     async (baseUrl, expected) => {
-      searchCreateMock.mockResolvedValue({ results: [] });
+      const calls = stubFetch(() => ({ results: [] }));
 
       const provider = providerHarness(perplexityProvider);
       await provider.search(
@@ -251,17 +218,15 @@ describe("Perplexity provider", () => {
         {},
       );
 
-      const options = perplexityCtorMock.mock.calls[0]?.[0];
-      expect(options.baseURL).toBe(baseUrl);
-      expect(options.defaultHeaders).toEqual(
-        expected ? { "X-Pplx-Integration": "webfox" } : undefined,
+      expect(calls[0]?.headers["x-pplx-integration"]).toBe(
+        expected ? "webfox" : undefined,
       );
     },
   );
 
   it("keeps a caller-supplied integration header from PERPLEXITY_CUSTOM_HEADERS", async () => {
     process.env.PERPLEXITY_CUSTOM_HEADERS = "x-pplx-integration: my-app";
-    searchCreateMock.mockResolvedValue({ results: [] });
+    const calls = stubFetch(() => ({ results: [] }));
 
     const provider = providerHarness(perplexityProvider);
     await provider.search(
@@ -272,8 +237,6 @@ describe("Perplexity provider", () => {
       {},
     );
 
-    expect(
-      perplexityCtorMock.mock.calls[0]?.[0].defaultHeaders,
-    ).toBeUndefined();
+    expect(calls[0]?.headers["x-pplx-integration"]).toBe("my-app");
   });
 });

@@ -1,37 +1,32 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createWebfox } from "../src/index.js";
+import { stubFetch } from "./fetch-stub.js";
 
-const { contents, getContentsJob } = vi.hoisted(() => ({
-  contents: vi.fn(),
-  getContentsJob: vi.fn(),
-}));
-vi.mock("valyu-js", () => ({
-  Valyu: class {
-    contents = contents;
-    getContentsJob = getContentsJob;
-  },
-}));
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   vi.resetAllMocks();
 });
 
 it("polls async contents without hiding work in an SDK waiter and retains reported URLs", async () => {
   vi.useFakeTimers();
-  contents.mockResolvedValue({
-    success: true,
-    jobId: "job",
-    status: "pending",
-  });
-  getContentsJob
-    .mockResolvedValueOnce({ success: true, status: "processing" })
-    .mockResolvedValueOnce({
+  let polls = 0;
+  const calls = stubFetch(({ method }) => {
+    if (method === "POST") {
+      return { success: true, job_id: "job", status: "pending" };
+    }
+    polls += 1;
+    if (polls === 1) {
+      return { success: true, status: "processing" };
+    }
+    return {
       success: true,
       status: "completed",
       results: [
         { status: "success", url: "https://final.test", content: "page" },
       ],
-    });
+    };
+  });
   const client = createWebfox({
     config: {},
     env: { VALYU_API_KEY: "test-key" },
@@ -47,18 +42,30 @@ it("polls async contents without hiding work in an SDK waiter and retains report
     ok: true,
     value: { url: "https://final.test", content: "page" },
   });
-  expect(contents).toHaveBeenCalledTimes(1);
-  expect(getContentsJob).toHaveBeenCalledTimes(2);
+  expect(calls.map(({ method, url }) => `${method} ${url}`)).toEqual([
+    "POST https://api.valyu.ai/v1/contents",
+    "GET https://api.valyu.ai/v1/contents/jobs/job",
+    "GET https://api.valyu.ai/v1/contents/jobs/job",
+  ]);
 });
 
 it("does not create a second contents job when a poll fails, even with retries enabled", async () => {
-  contents.mockResolvedValue({
-    success: true,
-    jobId: "job",
-    status: "pending",
-  });
-  getContentsJob.mockRejectedValue(
-    Object.assign(new Error("connection reset"), { code: "ECONNRESET" }),
+  let posts = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posts += 1;
+        return Response.json({
+          success: true,
+          job_id: "job",
+          status: "pending",
+        });
+      }
+      throw Object.assign(new Error("connection reset"), {
+        code: "ECONNRESET",
+      });
+    }),
   );
   const client = createWebfox({
     config: { execution: { retries: 3, retryDelayMs: 0 } },
@@ -72,5 +79,5 @@ it("does not create a second contents job when a poll fails, even with retries e
       })
     ).results[0],
   ).toMatchObject({ ok: false, error: { code: "PROVIDER_FAILURE" } });
-  expect(contents).toHaveBeenCalledTimes(1);
+  expect(posts).toBe(1);
 });

@@ -1,81 +1,40 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-const {
-  openaiCtorMock,
-  openaiResponsesCreateMock,
-  openaiResponsesRetrieveMock,
-  valyuCtorMock,
-  valyuDeepResearchCreateMock,
-  valyuDeepResearchStatusMock,
-} = vi.hoisted(() => ({
-  openaiCtorMock: vi.fn(),
-  openaiResponsesCreateMock: vi.fn(),
-  openaiResponsesRetrieveMock: vi.fn(),
-  valyuCtorMock: vi.fn(),
-  valyuDeepResearchCreateMock: vi.fn(),
-  valyuDeepResearchStatusMock: vi.fn(),
-}));
-
-vi.mock("valyu-js", () => ({
-  Valyu: valyuCtorMock.mockImplementation(function MockValyu() {
-    return {
-      deepresearch: {
-        create: valyuDeepResearchCreateMock,
-        status: valyuDeepResearchStatusMock,
-      },
-    };
-  }),
-}));
-
-vi.mock("openai", () => {
-  const MockOpenAI = openaiCtorMock.mockImplementation(function MockOpenAI() {
-    return {
-      responses: {
-        create: openaiResponsesCreateMock,
-        retrieve: openaiResponsesRetrieveMock,
-      },
-    };
-  });
-
-  return {
-    default: MockOpenAI,
-    OpenAI: MockOpenAI,
-  };
-});
-
 import { createWebfox, type WebfoxConfig } from "../src/index.js";
 import { stubFetch } from "./fetch-stub.js";
 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
-  openaiCtorMock.mockClear();
-  openaiResponsesCreateMock.mockReset();
-  openaiResponsesRetrieveMock.mockReset();
-  valyuCtorMock.mockClear();
-  valyuDeepResearchCreateMock.mockReset();
-  valyuDeepResearchStatusMock.mockReset();
 });
 
 describe("OpenAI provider", () => {
   it("uses structured outputs for web search", async () => {
-    openaiResponsesCreateMock.mockResolvedValue({
+    const calls = stubFetch(() => ({
       id: "resp_search_1",
       model: "gpt-4.1",
       status: "completed",
-      output_text: JSON.stringify({
-        sources: [
-          {
-            title: "OpenAI Deep Research docs",
-            url: "https://platform.openai.com/docs/guides/deep-research",
-            snippet: "Official guide for OpenAI deep research.",
-          },
-        ],
-      }),
-      output: [],
+      output: [
+        {
+          type: "message",
+          content: [
+            {
+              type: "output_text",
+              text: JSON.stringify({
+                sources: [
+                  {
+                    title: "OpenAI Deep Research docs",
+                    url: "https://platform.openai.com/docs/guides/deep-research",
+                    snippet: "Official guide for OpenAI deep research.",
+                  },
+                ],
+              }),
+            },
+          ],
+        },
+      ],
       error: null,
       incomplete_details: null,
-    });
+    }));
 
     const result = await createWebfox({
       config: {
@@ -105,13 +64,15 @@ describe("OpenAI provider", () => {
       queries: ["openai deep research"],
     });
 
-    expect(openaiCtorMock).toHaveBeenCalledWith({
-      maxRetries: 0,
-      apiKey: "literal-key",
-    });
-    expect(openaiResponsesCreateMock).toHaveBeenCalledTimes(1);
-    expect(openaiResponsesCreateMock).toHaveBeenCalledWith(
-      {
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      url: "https://api.openai.com/v1/responses",
+      method: "POST",
+      headers: expect.objectContaining({
+        authorization: "Bearer literal-key",
+        "idempotency-key": expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      }),
+      body: {
         model: "gpt-4.1",
         input: [
           "Search the public web and return only the most relevant sources for the user's query.",
@@ -163,10 +124,7 @@ describe("OpenAI provider", () => {
         },
         instructions: "Prefer official sources.",
       },
-      expect.objectContaining({
-        signal: expect.any(AbortSignal),
-      }),
-    );
+    });
     expect(result.status).toBe("ok");
     expect(successful(result.results[0])?.results[0]).toMatchObject({
       title: "OpenAI Deep Research docs",
@@ -175,11 +133,10 @@ describe("OpenAI provider", () => {
   });
 
   it("uses web search for grounded answers and preserves citations", async () => {
-    openaiResponsesCreateMock.mockResolvedValue({
+    const calls = stubFetch(() => ({
       id: "resp_answer_1",
       model: "gpt-4.1",
       status: "completed",
-      output_text: "OpenAI grounded answer",
       output: [
         {
           id: "msg_answer_1",
@@ -205,7 +162,7 @@ describe("OpenAI provider", () => {
       ],
       error: null,
       incomplete_details: null,
-    });
+    }));
 
     const result = await createWebfox({
       config: {
@@ -228,22 +185,18 @@ describe("OpenAI provider", () => {
       queries: ["What is the latest OpenAI deep research API?"],
     });
 
-    expect(openaiCtorMock).toHaveBeenCalledWith({
-      maxRetries: 0,
-      apiKey: "literal-key",
-    });
-    expect(openaiResponsesCreateMock).toHaveBeenCalledTimes(1);
-    expect(openaiResponsesCreateMock).toHaveBeenCalledWith(
-      {
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      url: "https://api.openai.com/v1/responses",
+      method: "POST",
+      headers: expect.objectContaining({ authorization: "Bearer literal-key" }),
+      body: {
         model: "gpt-4.1",
         input: "What is the latest OpenAI deep research API?",
         tools: [{ type: "web_search" }],
         instructions: "Keep the answer concise and prefer primary sources.",
       },
-      expect.objectContaining({
-        signal: expect.any(AbortSignal),
-      }),
-    );
+    });
     expect(successful(result.results[0])).toMatchObject({
       text: "OpenAI grounded answer",
       sources: [{ url: "https://example.com/answer", title: "Answer Source" }],
@@ -258,7 +211,7 @@ describe("async research providers", () => {
       results: [],
     }));
 
-    const promise = createWebfox({
+    const result = await createWebfox({
       config: {
         execution: { retries: 1 },
         providers: {
@@ -272,8 +225,6 @@ describe("async research providers", () => {
       options: undefined,
       input: "Investigate Exa research polling",
     });
-
-    const result = await promise;
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
@@ -292,42 +243,56 @@ describe("async research providers", () => {
   it("uses OpenAI background responses polling and preserves citations", async () => {
     vi.useFakeTimers();
 
-    openaiResponsesCreateMock.mockResolvedValue({ id: "resp_1" });
-    openaiResponsesRetrieveMock
-      .mockRejectedValueOnce(
-        Object.assign(new Error("connection reset"), { code: "ECONNRESET" }),
-      )
-      .mockResolvedValueOnce({
-        id: "resp_1",
-        model: "o3-deep-research",
-        status: "completed",
-        output_text: "OpenAI research result",
-        output: [
-          {
-            id: "msg_1",
-            type: "message",
-            role: "assistant",
-            status: "completed",
-            content: [
-              {
-                type: "output_text",
-                text: "OpenAI research result",
-                annotations: [
-                  {
-                    type: "url_citation",
-                    title: "Source A",
-                    url: "https://example.com/a",
-                    start_index: 0,
-                    end_index: 6,
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-        error: null,
-        incomplete_details: null,
-      });
+    let gets = 0;
+    const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        const body =
+          typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+        requests.push({ method, url, body });
+        if (method === "POST") {
+          return Response.json({ id: "resp_1" });
+        }
+        gets += 1;
+        if (gets === 1) {
+          throw Object.assign(new Error("connection reset"), {
+            code: "ECONNRESET",
+          });
+        }
+        return Response.json({
+          id: "resp_1",
+          model: "o3-deep-research",
+          status: "completed",
+          output: [
+            {
+              id: "msg_1",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "OpenAI research result",
+                  annotations: [
+                    {
+                      type: "url_citation",
+                      title: "Source A",
+                      url: "https://example.com/a",
+                      start_index: 0,
+                      end_index: 6,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          error: null,
+          incomplete_details: null,
+        });
+      }),
+    );
 
     const promise = createWebfox({
       config: {
@@ -356,33 +321,22 @@ describe("async research providers", () => {
     await vi.advanceTimersByTimeAsync(3000);
     const result = await promise;
 
-    expect(openaiCtorMock).toHaveBeenCalledWith({
-      maxRetries: 0,
-      apiKey: "literal-key",
-    });
-    expect(openaiResponsesCreateMock).toHaveBeenCalledTimes(1);
-    expect(openaiResponsesCreateMock).toHaveBeenCalledWith(
+    expect(requests).toEqual([
       {
-        model: "o3-deep-research",
-        input: "Investigate OpenAI deep research polling",
-        background: true,
-        tools: [{ type: "web_search" }],
-        instructions: "Prefer primary sources.",
-        max_tool_calls: 12,
+        method: "POST",
+        url: "https://api.openai.com/v1/responses",
+        body: {
+          model: "o3-deep-research",
+          input: "Investigate OpenAI deep research polling",
+          background: true,
+          tools: [{ type: "web_search" }],
+          instructions: "Prefer primary sources.",
+          max_tool_calls: 12,
+        },
       },
-      expect.objectContaining({
-        signal: expect.any(AbortSignal),
-      }),
-    );
-    expect(openaiResponsesRetrieveMock).toHaveBeenCalledTimes(2);
-    expect(openaiResponsesRetrieveMock).toHaveBeenNthCalledWith(
-      1,
-      "resp_1",
-      undefined,
-      expect.objectContaining({
-        signal: expect.any(AbortSignal),
-      }),
-    );
+      { method: "GET", url: "https://api.openai.com/v1/responses/resp_1" },
+      { method: "GET", url: "https://api.openai.com/v1/responses/resp_1" },
+    ]);
     expect(successful(result.results[0])).toMatchObject({
       text: "OpenAI research result",
       sources: [{ url: "https://example.com/a", title: "Source A" }],
@@ -392,25 +346,40 @@ describe("async research providers", () => {
   it("uses Valyu polling so transient errors do not create duplicate jobs", async () => {
     vi.useFakeTimers();
 
-    valyuDeepResearchCreateMock.mockResolvedValue({
-      success: true,
-      deepresearch_id: "valyu-job-1",
-    });
-    valyuDeepResearchStatusMock
-      .mockRejectedValueOnce(
-        Object.assign(new Error("connection reset"), { code: "ECONNRESET" }),
-      )
-      .mockResolvedValueOnce({
-        success: true,
-        status: "completed",
-        output: "Valyu research result",
-        sources: [
-          {
-            title: "Source A",
-            url: "https://example.com/a",
-          },
-        ],
-      });
+    let gets = 0;
+    const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        const body =
+          typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+        requests.push({ method, url, body });
+        if (method === "POST") {
+          return Response.json({
+            success: true,
+            deepresearch_id: "valyu-job-1",
+          });
+        }
+        gets += 1;
+        if (gets === 1) {
+          throw Object.assign(new Error("connection reset"), {
+            code: "ECONNRESET",
+          });
+        }
+        return Response.json({
+          success: true,
+          status: "completed",
+          output: "Valyu research result",
+          sources: [
+            {
+              title: "Source A",
+              url: "https://example.com/a",
+            },
+          ],
+        });
+      }),
+    );
 
     const promise = createWebfox({
       config: {
@@ -431,13 +400,25 @@ describe("async research providers", () => {
     await vi.advanceTimersByTimeAsync(3000);
     const result = await promise;
 
-    expect(valyuCtorMock).toHaveBeenCalledWith("literal-key", undefined);
-    expect(valyuDeepResearchCreateMock).toHaveBeenCalledTimes(1);
-    expect(valyuDeepResearchStatusMock).toHaveBeenCalledTimes(2);
-    expect(valyuDeepResearchStatusMock).toHaveBeenNthCalledWith(
-      1,
-      "valyu-job-1",
-    );
+    expect(requests).toEqual([
+      {
+        method: "POST",
+        url: "https://api.valyu.ai/v1/deepresearch/tasks",
+        body: {
+          query: "Investigate Valyu research polling",
+          mode: "fast",
+          output_formats: ["markdown"],
+        },
+      },
+      {
+        method: "GET",
+        url: "https://api.valyu.ai/v1/deepresearch/tasks/valyu-job-1/status",
+      },
+      {
+        method: "GET",
+        url: "https://api.valyu.ai/v1/deepresearch/tasks/valyu-job-1/status",
+      },
+    ]);
     expect(successful(result.results[0])).toMatchObject({
       text: "Valyu research result",
       sources: [{ url: "https://example.com/a", title: "Source A" }],

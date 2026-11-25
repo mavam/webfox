@@ -1,10 +1,3 @@
-import {
-  type TavilyClient,
-  type TavilyExtractResponse,
-  type TavilySearchResponse,
-  tavily,
-} from "@tavily/core";
-
 import type { ContentsAnswer } from "../../domain.js";
 import { WebfoxError } from "../../errors.js";
 import type {
@@ -13,61 +6,116 @@ import type {
   ProviderRequest,
   SearchResponse,
 } from "../contract.js";
-
 import {
   ambiguousContentsError,
+  asRecord,
+  describeHttpError,
+  joinUrl,
   omittedContentsError,
   pickSingleUrlOutcome,
+  readString,
+  requestJson,
   requireApiKey,
   trimSnippet,
 } from "../shared.js";
+
+const DEFAULT_BASE_URL = "https://api.tavily.com";
+
+interface TavilyImage {
+  url: string;
+  description?: string;
+}
+
+interface TavilySearchResultWire {
+  title?: string;
+  url?: string;
+  content?: string;
+  raw_content?: string;
+  score?: number;
+  published_date?: string;
+  favicon?: string;
+}
+
+interface TavilySearchResponseWire {
+  answer?: string;
+  response_time?: number;
+  request_id?: string;
+  usage?: { credits: number };
+  images?: Array<string | { url?: string; description?: string }>;
+  results?: TavilySearchResultWire[];
+}
+
+interface TavilyExtractResultWire {
+  url: string;
+  title?: string | null;
+  raw_content?: string;
+  images?: string[];
+  favicon?: string;
+}
+
+interface TavilyExtractFailedWire {
+  url: string;
+  error?: string;
+}
+
+interface TavilyExtractResponseWire {
+  results?: TavilyExtractResultWire[];
+  failed_results?: TavilyExtractFailedWire[];
+  response_time?: number;
+  request_id?: string;
+  usage?: { credits: number };
+}
 
 export const adapter = {
   async search(
     request: ProviderRequest<"search">,
     config: HttpProvider,
-    _context: ProviderContext,
+    context: ProviderContext,
   ): Promise<SearchResponse> {
-    const client = createClient(config);
+    const response = (await tavilyRequest(
+      config,
+      context,
+      "/search",
+      serializeSearchBody(request.query, request.maxResults, request.options),
+    )) as TavilySearchResponseWire;
 
-    const response = await client.search(request.query, {
-      ...(request.options ?? {}),
-      maxResults: request.maxResults,
-    });
-
+    const images = normalizeImages(response.images);
     return {
-      results: response.results.slice(0, request.maxResults).map((result) => ({
-        title: result.title,
-        url: result.url || "",
-        snippet: trimSnippet(result.content ?? result.rawContent),
-        score: typeof result.score === "number" ? result.score : undefined,
-        metadata: buildSearchMetadata(response, result),
-      })),
+      results: (response.results ?? [])
+        .slice(0, request.maxResults)
+        .map((result) => ({
+          title: result.title,
+          url: result.url || "",
+          snippet: trimSnippet(result.content ?? result.raw_content),
+          score: typeof result.score === "number" ? result.score : undefined,
+          metadata: buildSearchMetadata(response, images, result),
+        })),
     };
   },
 
   async contents(
     request: ProviderRequest<"contents">,
     config: HttpProvider,
-    _context: ProviderContext,
+    context: ProviderContext,
   ): Promise<ContentsAnswer> {
-    const client = createClient(config);
-
-    const response = await client.extract([request.url], {
-      ...(request.options ?? {}),
-    });
+    const response = (await tavilyRequest(
+      config,
+      context,
+      "/extract",
+      serializeExtractBody(request.url, request.options),
+    )) as TavilyExtractResponseWire;
 
     const outcome = pickSingleUrlOutcome(
       request.url,
-      response.results,
-      response.failedResults,
+      response.results ?? [],
+      response.failed_results ?? [],
     );
     if (outcome.kind === "result") {
       const result = outcome.value;
       return {
         url: result.url,
-        ...(typeof result.rawContent === "string"
-          ? { content: result.rawContent }
+        ...(typeof result.raw_content === "string"
+          ? { content: result.raw_content }
           : {}),
         metadata: buildExtractMetadata(response, result),
       };
@@ -86,27 +134,90 @@ export const adapter = {
   },
 };
 
-function createClient(config: HttpProvider): TavilyClient {
-  return tavily({
-    apiKey: requireApiKey(config),
-    apiBaseURL: config.baseUrl,
+async function tavilyRequest(
+  config: HttpProvider,
+  context: ProviderContext,
+  path: string,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const apiKey = requireApiKey(config);
+  return await requestJson(
+    joinUrl(config.baseUrl ?? DEFAULT_BASE_URL, path),
+    {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body,
+      signal: context.signal,
+    },
+    (payload, response) => describeHttpError("Tavily", payload, response),
+  );
+}
+
+function toSnakeCase(name: string): string {
+  return name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+function serializeSearchBody(
+  query: string,
+  maxResults: number,
+  options?: Record<string, unknown>,
+): Record<string, unknown> {
+  const { maxHours, ...rest } = options ?? {};
+  const body: Record<string, unknown> = { query };
+  for (const [key, value] of Object.entries(rest)) {
+    if (value !== undefined) {
+      body[toSnakeCase(key)] = value;
+    }
+  }
+  if (body.max_age_hours === undefined && maxHours !== undefined) {
+    body.max_age_hours = maxHours;
+  }
+  body.max_results = maxResults;
+  return body;
+}
+
+function serializeExtractBody(
+  url: string,
+  options?: Record<string, unknown>,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { urls: [url] };
+  for (const [key, value] of Object.entries(options ?? {})) {
+    if (value !== undefined) {
+      body[toSnakeCase(key)] = value;
+    }
+  }
+  return body;
+}
+
+function normalizeImages(
+  images: TavilySearchResponseWire["images"],
+): TavilyImage[] {
+  if (!Array.isArray(images)) return [];
+  return images.map((image) => {
+    if (typeof image === "string") return { url: image };
+    const record = asRecord(image);
+    const description = readString(record?.description);
+    return {
+      url: readString(record?.url) ?? "",
+      ...(description !== undefined ? { description } : {}),
+    };
   });
 }
 
 function buildSearchMetadata(
-  response: TavilySearchResponse,
-  result: TavilySearchResponse["results"][number],
+  response: TavilySearchResponseWire,
+  images: TavilyImage[],
+  result: TavilySearchResultWire,
 ): Record<string, unknown> | undefined {
   const metadata: Record<string, unknown> = {
     ...(response.answer ? { answer: response.answer } : {}),
-    ...(response.images?.length ? { images: response.images } : {}),
-    ...(result.publishedDate ? { publishedDate: result.publishedDate } : {}),
+    ...(images.length ? { images } : {}),
+    ...(result.published_date ? { publishedDate: result.published_date } : {}),
     ...(result.favicon ? { favicon: result.favicon } : {}),
-    ...(result.rawContent ? { rawContent: result.rawContent } : {}),
-    ...(response.requestId ? { requestId: response.requestId } : {}),
+    ...(result.raw_content ? { rawContent: result.raw_content } : {}),
+    ...(response.request_id ? { requestId: response.request_id } : {}),
     ...(response.usage ? { usage: response.usage } : {}),
-    ...(typeof response.responseTime === "number"
-      ? { responseTime: response.responseTime }
+    ...(typeof response.response_time === "number"
+      ? { responseTime: response.response_time }
       : {}),
   };
 
@@ -114,17 +225,17 @@ function buildSearchMetadata(
 }
 
 function buildExtractMetadata(
-  response: TavilyExtractResponse,
-  result: TavilyExtractResponse["results"][number],
+  response: TavilyExtractResponseWire,
+  result: TavilyExtractResultWire,
 ): Record<string, unknown> | undefined {
   const metadata: Record<string, unknown> = {
     ...(result.title ? { title: result.title } : {}),
     ...(Array.isArray(result.images) ? { images: result.images } : {}),
     ...(result.favicon ? { favicon: result.favicon } : {}),
-    ...(response.requestId ? { requestId: response.requestId } : {}),
+    ...(response.request_id ? { requestId: response.request_id } : {}),
     ...(response.usage ? { usage: response.usage } : {}),
-    ...(typeof response.responseTime === "number"
-      ? { responseTime: response.responseTime }
+    ...(typeof response.response_time === "number"
+      ? { responseTime: response.response_time }
       : {}),
   };
 

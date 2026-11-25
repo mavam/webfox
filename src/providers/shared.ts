@@ -160,6 +160,79 @@ export function expectJsonBody(payload: unknown, response: Response): unknown {
   return payload;
 }
 
+/** Read JSON payloads from a Server-Sent Events response stream. */
+export async function readSseJson(
+  response: Response,
+  onData: (value: unknown) => void,
+): Promise<void> {
+  const reader = response.body?.getReader();
+  const handleLine = (rawLine: string) => {
+    const line = rawLine.replace(/\r$/, "");
+    if (!line.startsWith("data:")) return;
+    const data = line.slice(5).trim();
+    if (!data || data === "[DONE]") return;
+    try {
+      onData(JSON.parse(data) as unknown);
+    } catch {
+      // Ignore non-JSON keepalives or malformed partial frames.
+    }
+  };
+  if (!reader) {
+    for (const line of (await response.text()).split("\n")) handleLine(line);
+    return;
+  }
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) handleLine(line);
+  }
+  buffer += decoder.decode();
+  if (buffer) {
+    for (const line of buffer.split("\n")) handleLine(line);
+  }
+}
+
+/** Extract a concise error message from common JSON or plain-text API error bodies. */
+export function describeHttpError(
+  label: string,
+  payload: unknown,
+  response: Response,
+): string {
+  const record = asRecord(payload);
+  const errorObj = asRecord(record?.error);
+  const detailObj = asRecord(record?.detail);
+  const errors = Array.isArray(record?.errors) ? record.errors : [];
+  const firstArrayError = errors
+    .map((item) => {
+      const entry = asRecord(item);
+      return (
+        readNonEmptyString(entry?.message) ??
+        readNonEmptyString(entry?.error) ??
+        readNonEmptyString(item)
+      );
+    })
+    .filter((item): item is string => Boolean(item))
+    .join("; ");
+  const detail =
+    readNonEmptyString(errorObj?.message) ??
+    readNonEmptyString(detailObj?.error) ??
+    readNonEmptyString(detailObj?.message) ??
+    readNonEmptyString(record?.error) ??
+    readNonEmptyString(record?.message) ??
+    readNonEmptyString(record?.detail) ??
+    (firstArrayError || undefined) ??
+    (typeof payload === "string" ? readNonEmptyString(payload) : undefined);
+  const trimmed = detail?.trim().slice(0, 500);
+  return trimmed
+    ? `${label} request failed (HTTP ${response.status}): ${trimmed}`
+    : `${label} request failed (HTTP ${response.status}).`;
+}
+
 /**
  * Send one JSON request without retries; the runtime owns retry policy.
  * Non-2xx responses become classified provider errors with the message that

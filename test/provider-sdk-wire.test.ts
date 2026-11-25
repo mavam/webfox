@@ -312,4 +312,51 @@ it("forwards OpenAI reasoning, output budgets, and explicit cache-only access", 
       tools: [{ type: "web_search", external_web_access: false }],
     },
   });
+  expect(result.results[0]).toMatchObject({
+    ok: true,
+    value: { text: "Answer" },
+  });
+});
+
+it("forwards Valyu search controls as snake_case over direct HTTP", async () => {
+  response = {
+    success: true,
+    results: [
+      {
+        title: "Valyu Source",
+        url: "https://example.com",
+        description: "Snippet",
+        relevance_score: 0.9,
+      },
+    ],
+  };
+  const result = await client("valyu").search({
+    provider: "valyu",
+    queries: ["q"],
+    maxResults: 4,
+    options: {
+      searchType: "news",
+      excludeSources: ["spam.example"],
+      fastMode: true,
+      responseLength: "short",
+    },
+  });
+  expect(result.status).toBe("ok");
+  expect(requests[0]).toMatchObject({
+    path: "/search",
+    body: {
+      query: "q",
+      search_type: "news",
+      max_num_results: 4,
+      excluded_sources: ["spam.example"],
+      fast_mode: true,
+      response_length: "short",
+    },
+  });
+  expect(result.results[0]).toMatchObject({
+    ok: true,
+    value: {
+      results: [{ title: "Valyu Source", url: "https://example.com" }],
+    },
+  });
 });
