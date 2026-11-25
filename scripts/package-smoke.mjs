@@ -11,6 +11,7 @@ const sourcePackageJson = JSON.parse(
 );
 const expectedSchemaUrl = `https://unpkg.com/${sourcePackageJson.name}@latest/dist/config.schema.json`;
 const directory = await mkdtemp(join(tmpdir(), "webfox-package-smoke-"));
+const durableDirectory = await mkdtemp(join(tmpdir(), "webfox-durable-smoke-"));
 let archive;
 
 try {
@@ -242,6 +243,12 @@ try {
       timeout: 60_000,
     },
   );
+  // Test webfox/durable in a separate directory without pi-coding-agent
+  // installed so any accidental import of pi-coding-agent fails immediately.
+  await writeFile(
+    join(durableDirectory, "package.json"),
+    '{"type":"module","private":true}\n',
+  );
   execFileSync(
     "npm",
     [
@@ -249,11 +256,12 @@ try {
       "--ignore-scripts",
       "--no-audit",
       "--no-fund",
+      archive,
       `@earendil-works/pi-durable@${sourcePackageJson.devDependencies["@earendil-works/pi-durable"]}`,
       `@earendil-works/chord@${sourcePackageJson.devDependencies["@earendil-works/chord"]}`,
       "typebox@1.3.27",
     ],
-    { cwd: directory, stdio: "inherit" },
+    { cwd: durableDirectory, stdio: "inherit" },
   );
   execFileSync(
     process.execPath,
@@ -271,13 +279,13 @@ try {
       ].join("\n"),
     ],
     {
-      cwd: directory,
+      cwd: durableDirectory,
       stdio: "inherit",
       env: { ...process.env, WEBFOX_CONFIG: configPath },
     },
   );
   await readFile(
-    join(directory, "node_modules", "webfox", "dist", "durable.d.ts"),
+    join(durableDirectory, "node_modules", "webfox", "dist", "durable.d.ts"),
     "utf8",
   );
   console.log(
@@ -286,4 +294,5 @@ try {
 } finally {
   if (archive) await rm(archive, { force: true });
   await rm(directory, { recursive: true, force: true });
+  await rm(durableDirectory, { recursive: true, force: true });
 }

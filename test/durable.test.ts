@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai";
 import {
@@ -14,6 +14,7 @@ import {
   MemoryStorage,
   ToolResultEntry,
 } from "@earendil-works/pi-durable";
+import { ok, type ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { Type } from "typebox";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { createWebfoxExtension } from "../src/durable.js";
@@ -120,6 +121,83 @@ it("runs the existing provider through the durable harness and preserves partial
         },
       ],
     });
+  } finally {
+    await harness.close(context);
+  }
+});
+
+it("writes truncated spill files through the conversation ExecutionEnv", async () => {
+  const context = BACKGROUND_CONTEXT;
+  const models = createModels();
+  const faux = fauxProvider();
+  models.setProvider(faux.provider);
+  faux.setResponses([
+    fauxAssistantMessage(
+      fauxToolCall("web_contents", { urls: ["https://big.test"] }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("Done."),
+  ]);
+
+  const config = customConfig();
+  config.providers!.custom!.commands!.contents!.argv = [
+    process.execPath,
+    "-e",
+    `console.log(JSON.stringify({ answers: [{ inputIndex: 0, url: "https://big.test", content: Array.from({ length: 2500 }, (_, i) => "line " + i).join("\\n") }] }))`,
+  ];
+
+  const written = new Map<string, string>();
+  const baseEnv = new NodeExecutionEnv({ cwd: process.cwd() });
+  const env = new Proxy(baseEnv, {
+    get(target, prop, receiver) {
+      if (prop === "createTempDir") {
+        return vi.fn(async (prefix: string | undefined) =>
+          ok(`/virtual-tmp/${prefix ?? ""}123`),
+        );
+      }
+      if (prop === "joinPath") {
+        return vi.fn(async (parts: string[]) => ok(parts.join("/")));
+      }
+      if (prop === "writeFile") {
+        return vi.fn(async (path: string, content: string | Uint8Array) => {
+          written.set(path, String(content));
+          return ok(undefined);
+        });
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as ExecutionEnv;
+
+  const registry = createRegistry();
+  registry.install(createWebfoxExtension({ config }));
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    { models, registry, env: () => env },
+    context,
+  );
+  try {
+    const root = await harness.root(context, {
+      agent: { model: { provider: "faux", modelId: "faux-1" } },
+    });
+    const settled = await (
+      await root.submit({ type: "input", content: "Fetch big page." }, context)
+    ).wait(context);
+    expect(settled.status).toBe("done");
+    const entries = await root.entries({}, 20, undefined, context);
+    const entry = entries.items.find((item) => ToolResultEntry.is(item));
+    const message = entry?.model?.[0];
+    if (message?.role !== "toolResult") throw new Error("Missing result");
+    const text = message.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
+    expect(text).toContain("Full results: /virtual-tmp/web-123/result.json");
+    expect(text).not.toContain("line 2499");
+    const spilled = JSON.parse(
+      written.get("/virtual-tmp/web-123/result.json") ?? "{}",
+    );
+    expect(spilled.results[0].value.content).toContain("line 2499");
   } finally {
     await harness.close(context);
   }

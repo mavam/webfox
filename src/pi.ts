@@ -2,36 +2,29 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  truncateHead,
-  withFileMutationQueue,
-} from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { Static } from "typebox";
-import { descriptions, webToolParameters } from "./tool-definition.js";
-import { WebCall, renderWebResult, type InputStatus } from "./pi-render.js";
+import { DOCUMENT_SCHEMAS } from "./document-schema.js";
+import { WebfoxError } from "./errors.js";
 import {
   CAPABILITIES,
-  createWebfox as createWebClient,
-  type Capability,
   type ProgressEvent,
   type WebfoxClient as WebClient,
 } from "./index.js";
-import { renderTextDocument } from "./render.js";
-import { prepareToolArguments } from "./pi-validation.js";
-import { WebfoxError } from "./errors.js";
 import { configurationDiagnostic } from "./pi-diagnostics.js";
-import { DOCUMENT_SCHEMAS } from "./document-schema.js";
+import { WebCall, renderWebResult, type InputStatus } from "./pi-render.js";
+import {
+  WEB_NAMESPACE,
+  createClientCache,
+  executeCapability,
+  formatToolOutput,
+  type WebToolParams,
+} from "./pi-shared.js";
+import { prepareToolArguments } from "./pi-validation.js";
+import { descriptions, webToolParameters } from "./tool-definition.js";
 
 export default function webExtension(pi: ExtensionAPI): void {
-  const clients = new Map<string, WebClient>();
-  const clientFor = (cwd: string) => {
-    let client = clients.get(cwd);
-    if (!client) {
-      client = createWebClient({ cwd });
-      clients.set(cwd, client);
-    }
-    return client;
-  };
+  const clientFor = createClientCache();
   let selected: ReturnType<WebClient["inspectCapability"]>[];
   try {
     const initial = clientFor(process.cwd());
@@ -68,10 +61,7 @@ export default function webExtension(pi: ExtensionAPI): void {
     const parameters = webToolParameters(inspection);
     pi.registerTool({
       name: `web_${capability}`,
-      namespace: {
-        name: "web",
-        description: "Search, extract pages, answer, and research the web.",
-      },
+      namespace: { ...WEB_NAMESPACE },
       label: `Web ${capability[0].toUpperCase()}${capability.slice(1)}`,
       // Keep provider guidance with the tool schema, including with custom system prompts.
       description: [
@@ -117,71 +107,50 @@ export default function webExtension(pi: ExtensionAPI): void {
         );
       },
       async execute(_id, values, signal, onUpdate, ctx) {
-        const params = values as {
-          queries?: string[];
-          urls?: string[];
-          input?: string;
-          maxResults?: number;
-          options?: Record<string, unknown>;
-        };
+        const params = values as WebToolParams;
         const client = clientFor(ctx.cwd);
         const inputStatuses: InputStatus[] = [];
-        const request = {
-          provider,
-          signal: signal ?? ctx.signal,
-          options: params.options as Record<string, unknown> | undefined,
-          onProgress: (event: ProgressEvent) => {
-            if (
-              event.inputIndex !== undefined &&
-              event.input !== undefined &&
-              event.state
-            ) {
-              inputStatuses[event.inputIndex] = {
-                input: event.input,
-                state: event.state,
-              };
-            }
-            onUpdate?.({
-              content: [{ type: "text", text: event.message }],
-              details: {
-                webInputStatus: true,
-                capability,
-                inputs: inputStatuses
-                  .filter(Boolean)
-                  .map((row) => ({ ...row })),
-              },
-            });
-          },
+        const onProgress = (event: ProgressEvent) => {
+          if (
+            event.inputIndex !== undefined &&
+            event.input !== undefined &&
+            event.state
+          ) {
+            inputStatuses[event.inputIndex] = {
+              input: event.input,
+              state: event.state,
+            };
+          }
+          onUpdate?.({
+            content: [{ type: "text", text: event.message }],
+            details: {
+              webInputStatus: true,
+              capability,
+              inputs: inputStatuses.filter(Boolean).map((row) => ({ ...row })),
+            },
+          });
         };
-        const result =
-          capability === "search"
-            ? await client.search({
-                ...request,
-                queries: params.queries!,
-                maxResults: params.maxResults,
-              })
-            : capability === "answer"
-              ? await client.answer({ ...request, queries: params.queries! })
-              : capability === "contents"
-                ? await client.contents({ ...request, urls: params.urls! })
-                : await client.research({ ...request, input: params.input! });
-        // The JSON round trip yields the exact document that the CLI prints,
-        // free of undefined values and class instances.
-        const json = JSON.stringify(result);
-        const text = renderTextDocument(result);
-        const truncated = truncateHead(text);
-        let body = truncated.content;
-        let fullOutputPath: string | undefined;
-        if (truncated.truncated) {
-          fullOutputPath = join(
-            await mkdtemp(join(tmpdir(), "web-")),
-            "result.json",
-          );
-          await withFileMutationQueue(fullOutputPath, () =>
-            writeFile(fullOutputPath!, json, { mode: 0o600 }),
-          );
-          body += `\n\nFull results: ${fullOutputPath}`;
-        }
+        const result = await executeCapability(
+          client,
+          capability,
+          provider,
+          params,
+          signal ?? ctx.signal,
+          onProgress,
+        );
+        const { body, json, fullOutputPath } = await formatToolOutput(
+          result,
+          async (serialized) => {
+            const path = join(
+              await mkdtemp(join(tmpdir(), "web-")),
+              "result.json",
+            );
+            await withFileMutationQueue(path, () =>
+              writeFile(path, serialized, { mode: 0o600 }),
+            );
+            return path;
+          },
+        );
         // Preserve partial results while still reporting failed inputs as a
         // tool error to the model and the UI.
         return {
