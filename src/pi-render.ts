@@ -6,6 +6,7 @@ import {
   Markdown,
   visibleWidth,
   type Component,
+  type Keybinding,
 } from "@earendil-works/pi-tui";
 import type { Capability } from "./domain.js";
 import { callParameters } from "./pi-params.js";
@@ -67,14 +68,21 @@ export class WebCall implements Component {
   private args: Record<string, unknown> = {};
   private theme!: Theme;
   private expanded = false;
+  private keyText?: (keybinding: Keybinding) => string;
 
   constructor(private readonly capability: Capability) {}
 
-  update(args: unknown, theme: Theme, expanded: boolean): void {
+  update(
+    args: unknown,
+    theme: Theme,
+    expanded: boolean,
+    keyText?: (keybinding: Keybinding) => string,
+  ): void {
     this.args =
       args && typeof args === "object" ? (args as Record<string, unknown>) : {};
     this.theme = theme;
     this.expanded = expanded;
+    this.keyText = keyText;
   }
 
   render(width: number): string[] {
@@ -90,7 +98,9 @@ export class WebCall implements Component {
         : new Text(text, 0, 0)
             .render(width)
             .map((line) => truncateToWidth(line, width));
-    const key = expansionKey();
+    const key = this.keyText
+      ? this.keyText("app.tools.expand")
+      : expansionKey();
     const hint = key
       ? theme.fg("muted", " (") +
         theme.fg("dim", key) +

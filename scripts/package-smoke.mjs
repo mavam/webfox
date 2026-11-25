@@ -264,8 +264,10 @@ try {
         'const { createWebfoxExtension } = await import("webfox/durable");',
         "const extension = createWebfoxExtension({ cwd: process.cwd() });",
         'const expected = ["web_answer", "web_contents", "web_research", "web_search"];',
+        'if (extension.namespace?.name !== "web") throw new Error("missing packed durable namespace");',
         'if (JSON.stringify(extension.tools.map(tool => tool.name).sort()) !== JSON.stringify(expected)) throw new Error("missing packed durable tools");',
         'if (extension.tools.some(tool => tool.replay !== "unsafe")) throw new Error("external requests must not replay");',
+        'if (extension.tools.some(tool => !tool.structuredOutputSchema)) throw new Error("durable tools must declare structured output schemas");',
       ].join("\n"),
     ],
     {

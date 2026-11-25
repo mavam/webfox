@@ -117,6 +117,7 @@ function buildSearchMetadata(
     ...(result.favicon ? { favicon: result.favicon } : {}),
     ...(result.rawContent ? { rawContent: result.rawContent } : {}),
     ...(response.requestId ? { requestId: response.requestId } : {}),
+    ...(response.usage ? { usage: response.usage } : {}),
     ...(typeof response.responseTime === "number"
       ? { responseTime: response.responseTime }
       : {}),
@@ -134,6 +135,7 @@ function buildExtractMetadata(
     ...(Array.isArray(result.images) ? { images: result.images } : {}),
     ...(result.favicon ? { favicon: result.favicon } : {}),
     ...(response.requestId ? { requestId: response.requestId } : {}),
+    ...(response.usage ? { usage: response.usage } : {}),
     ...(typeof response.responseTime === "number"
       ? { responseTime: response.responseTime }
       : {}),

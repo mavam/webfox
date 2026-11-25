@@ -11,6 +11,7 @@ import {
   defineTool,
   type Extension,
 } from "@earendil-works/pi-durable";
+import { DOCUMENT_SCHEMAS } from "./document-schema.js";
 import {
   CAPABILITIES,
   createWebfox,
@@ -47,6 +48,10 @@ export function createWebfoxExtension(
   ).filter((inspection) => inspection.provider);
   return defineExtension({
     name: "webfox",
+    namespace: {
+      name: "web",
+      description: "Search, extract pages, answer, and research the web.",
+    },
     tools: inspections.map((inspection) => {
       const capability = inspection.capability;
       const parameters = webToolParameters(inspection);
@@ -55,9 +60,10 @@ export function createWebfoxExtension(
         description: [
           descriptions[capability],
           ...(inspection.promptGuidelines ?? []),
-          "Output is limited to 2000 lines or 50 KiB; complete results are saved to a private file when truncated.",
+          "Output is limited to 2000 lines or 50 KiB; complete results are saved to a private file when truncated. Codemode scripts receive complete structured results.",
         ].join("\n"),
         parameters,
+        structuredOutputSchema: DOCUMENT_SCHEMAS[capability],
         // Web requests may incur charges. A crash reports interruption rather than silently charging again.
         replay: "unsafe",
         prepareArguments: (args) =>
@@ -94,6 +100,7 @@ export function createWebfoxExtension(
                       ...request,
                       input: args.input as string,
                     });
+          const json = JSON.stringify(result);
           const truncated = truncateHead(renderTextDocument(result));
           let body = truncated.content;
           let fullOutputPath: string | undefined;
@@ -103,14 +110,15 @@ export function createWebfoxExtension(
               "result.json",
             );
             await withFileMutationQueue(fullOutputPath, () =>
-              writeFile(fullOutputPath!, JSON.stringify(result), {
+              writeFile(fullOutputPath!, json, {
                 mode: 0o600,
               }),
             );
             body += `\n\nFull results: ${fullOutputPath}`;
           }
           return {
-            content: [{ type: "text", text: body }],
+            output: [{ type: "text", text: body }],
+            structuredOutput: JSON.parse(json),
             isError: result.status === "partial",
             details: {
               status: result.status,

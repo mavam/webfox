@@ -49,7 +49,7 @@
     "url": "git+https://github.com/mavam/webfox.git"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.12.0"
   },
   "publishConfig": {
     "access": "public"
@@ -92,30 +92,30 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@perplexity-ai/perplexity_ai": "^0.41.0",
-    "@tavily/core": "^0.7.14",
+    "@perplexity-ai/perplexity_ai": "^0.43.1",
+    "@tavily/core": "^1.1.0",
     "cloudflare": "^7.3.0",
-    "commander": "^14.0.3",
-    "openai": "^7.47.0",
+    "commander": "^15.1.0",
+    "openai": "^7.62.0",
     "parallel-web": "^1.3.7",
     "picocolors": "^1.1.1",
-    "valyu-js": "^2.11.5",
-    "yaml": "^2.9.0"
+    "valyu-js": "^2.12.1",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.4",
-    "@earendil-works/chord": "^1.0.0",
-    "@earendil-works/pi-ai": "^1.0.0",
-    "@earendil-works/pi-coding-agent": "^1.0.0",
-    "@earendil-works/pi-durable": "^1.0.0",
-    "@earendil-works/pi-tui": "^1.0.0",
-    "@types/node": "^26.1.1",
-    "esbuild": "^0.28.1",
+    "@biomejs/biome": "^2.6.8",
+    "@earendil-works/chord": "^1.6.0",
+    "@earendil-works/pi-ai": "^1.6.0",
+    "@earendil-works/pi-coding-agent": "^1.6.0",
+    "@earendil-works/pi-durable": "^1.6.0",
+    "@earendil-works/pi-tui": "^1.6.0",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^5.1.1"
   },
   "peerDependencies": {
-    "@earendil-works/pi-durable": "^1.0.0",
+    "@earendil-works/pi-durable": "^1.6.0",
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
     "typebox": "*"

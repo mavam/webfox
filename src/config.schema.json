@@ -4142,9 +4142,17 @@
                       "type": "boolean",
                       "description": "Include related images."
                     },
+                    "includeImageDescriptions": {
+                      "type": "boolean",
+                      "description": "Request descriptions for returned images."
+                    },
                     "includeFavicon": {
                       "type": "boolean",
                       "description": "Include favicon URLs."
+                    },
+                    "includeUsage": {
+                      "type": "boolean",
+                      "description": "Request credit usage details."
                     },
                     "includeDomains": {
                       "type": "array",
@@ -4153,12 +4161,51 @@
                       },
                       "description": "Restrict results to these domains."
                     },
+                    "includeDomainsMode": {
+                      "type": "string",
+                      "enum": ["restrict", "prefer"],
+                      "description": "How to apply includeDomains."
+                    },
                     "excludeDomains": {
                       "type": "array",
                       "items": {
                         "type": "string"
                       },
                       "description": "Exclude these domains from results."
+                    },
+                    "maxAgeHours": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Maximum acceptable cache age in hours."
+                    },
+                    "fetchTimeout": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "description": "Live-fetch time budget in seconds."
+                    },
+                    "cacheFallback": {
+                      "type": "boolean",
+                      "description": "Allow cached content when live fetching fails."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Preferred content language."
+                    },
+                    "filterByLanguage": {
+                      "type": "boolean",
+                      "description": "Restrict results to the requested language."
+                    },
+                    "safeSearch": {
+                      "type": "boolean",
+                      "description": "Filter explicit content from results."
+                    },
+                    "includePublishedDate": {
+                      "type": "boolean",
+                      "description": "Request detected publication dates."
+                    },
+                    "filterByPublishedDate": {
+                      "type": "boolean",
+                      "description": "Exclude undated results and results outside the requested date window; also enables publication dates."
                     },
                     "days": {
                       "type": "integer",
@@ -4213,6 +4260,10 @@
                     "includeFavicon": {
                       "type": "boolean",
                       "description": "Include favicon URLs."
+                    },
+                    "includeUsage": {
+                      "type": "boolean",
+                      "description": "Request credit usage details."
                     }
                   },
                   "description": "Tavily extract options.",
@@ -4558,7 +4609,7 @@
                       "description": "Use Valyu fast mode when lower latency is preferred."
                     }
                   },
-                  "description": "Valyu answer options.",
+                  "description": "Valyu answer options. Deprecated upstream (retires 2026-12-17); prefer Valyu research with mode='instant' or search.",
                   "additionalProperties": false
                 },
                 "research": {
@@ -4566,6 +4617,10 @@
                   "properties": {
                     "mode": {
                       "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "instant"
+                        },
                         {
                           "type": "string",
                           "const": "fast"
@@ -4606,6 +4661,10 @@
                               {
                                 "type": "string",
                                 "const": "toon"
+                              },
+                              {
+                                "type": "string",
+                                "const": "structured_report"
                               }
                             ]
                           },
@@ -4618,6 +4677,13 @@
                         ]
                       },
                       "description": "Requested Valyu research output formats."
+                    },
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Skills to enable for this research task (for example 'forecasting')."
                     },
                     "search": {
                       "type": "object",
