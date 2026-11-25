@@ -1,5 +1,3 @@
-import OpenAI from "openai";
-
 import { executeAsyncResearch } from "../../runtime/polling.js";
 import type {
   ProviderContext,
@@ -16,17 +14,20 @@ import type {
   OpenAISearchOptions,
   OpenAIWebSearchToolOptions,
 } from "./types.js";
-
 import {
+  describeHttpError,
+  joinUrl,
   readInteger,
   readNonEmptyString,
   readPositiveInteger,
   readStringArray,
   readStringUnion,
+  requestJson,
   requireApiKey,
   trimSnippet,
 } from "../shared.js";
 
+const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_SEARCH_MODEL = "gpt-4.1";
 const DEFAULT_ANSWER_MODEL = "gpt-4.1";
 const DEFAULT_RESEARCH_MODEL = "o4-mini-deep-research";
@@ -64,15 +65,16 @@ interface OpenAIResponseLike {
     | "cancelled"
     | "queued"
     | "incomplete";
-  output_text: string;
+  output_text?: string;
   error: { message: string } | null;
   incomplete_details: {
     reason?: "max_output_tokens" | "content_filter";
   } | null;
-  output: Array<{
+  output?: Array<{
     type: string;
     content?: Array<{
       type: string;
+      text?: string;
       annotations?: Array<{
         type: string;
         title?: string;
@@ -90,15 +92,17 @@ export const adapter = {
     config: OpenAIConfig,
     context: ProviderContext,
   ): Promise<SearchResponse> {
-    const client = createClient(config);
-    const response = (await client.responses.create(
+    const response = await openaiRequest(
+      config,
+      context,
+      "/responses",
       buildOpenAISearchRequest(
         request.query,
         request.maxResults,
         request.options,
       ),
-      buildRequestOptions(context.signal, context.idempotencyKey),
-    )) as OpenAIResponseLike;
+      context.idempotencyKey,
+    );
 
     return parseSearchResponse(response, request.maxResults);
   },
@@ -108,11 +112,13 @@ export const adapter = {
     config: OpenAIConfig,
     context: ProviderContext,
   ): Promise<ToolOutput> {
-    const client = createClient(config);
-    const response = (await client.responses.create(
+    const response = await openaiRequest(
+      config,
+      context,
+      "/responses",
       buildOpenAIAnswerRequest(request.query, request.options),
-      buildRequestOptions(context.signal, context.idempotencyKey),
-    )) as OpenAIResponseLike;
+      context.idempotencyKey,
+    );
 
     return ensureCompletedResponse(response, "answer");
   },
@@ -138,11 +144,13 @@ async function startResearch(
   context: ProviderContext,
   options?: Record<string, unknown>,
 ): Promise<ResearchJob> {
-  const client = createClient(config);
-  const response = (await client.responses.create(
+  const response = await openaiRequest(
+    config,
+    context,
+    "/responses",
     buildOpenAIResearchRequest(input, options),
-    buildRequestOptions(context.signal, context.idempotencyKey),
-  )) as OpenAIResponseLike;
+    context.idempotencyKey,
+  );
 
   return { id: response.id };
 }
@@ -152,12 +160,11 @@ async function pollResearch(
   config: OpenAIConfig,
   context: ProviderContext,
 ): Promise<ResearchPollResult> {
-  const client = createClient(config);
-  const response = (await client.responses.retrieve(
-    id,
-    undefined,
-    buildRequestOptions(context.signal),
-  )) as OpenAIResponseLike;
+  const response = await openaiRequest(
+    config,
+    context,
+    `/responses/${encodeURIComponent(id)}`,
+  );
   const status = response.status ?? "completed";
 
   if (status === "completed") {
@@ -194,16 +201,33 @@ async function pollResearch(
   };
 }
 
-function createClient(config: OpenAIConfig): OpenAI {
+async function openaiRequest(
+  config: OpenAIConfig,
+  context: ProviderContext,
+  path: string,
+  body?: Record<string, unknown>,
+  idempotencyKey?: string,
+): Promise<OpenAIResponseLike> {
   const apiKey = requireApiKey(config);
-
-  const baseUrl = config.baseUrl;
-
-  return new OpenAI({
-    maxRetries: 0,
-    apiKey,
-    ...(baseUrl ? { baseURL: baseUrl } : {}),
-  });
+  const env = context.env ?? process.env;
+  const baseUrl =
+    config.baseUrl?.trim() || env.OPENAI_BASE_URL?.trim() || DEFAULT_BASE_URL;
+  const organization = env.OPENAI_ORG_ID?.trim();
+  const project = env.OPENAI_PROJECT_ID?.trim();
+  return (await requestJson(
+    joinUrl(baseUrl, path),
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        ...(organization ? { "OpenAI-Organization": organization } : {}),
+        ...(project ? { "OpenAI-Project": project } : {}),
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+      },
+      ...(body === undefined ? {} : { body }),
+      signal: context.signal,
+    },
+    (payload, response) => describeHttpError("OpenAI", payload, response),
+  )) as OpenAIResponseLike;
 }
 
 function generationControls(options?: Record<string, unknown>) {
@@ -221,10 +245,7 @@ function generationControls(options?: Record<string, unknown>) {
   return {
     ...(effort ? { reasoning: { effort } } : {}),
     ...(maxTokens ? { max_output_tokens: maxTokens } : {}),
-  } satisfies Pick<
-    OpenAI.Responses.ResponseCreateParamsNonStreaming,
-    "reasoning" | "max_output_tokens"
-  >;
+  };
 }
 
 function buildOpenAISearchRequest(
@@ -402,18 +423,20 @@ function resolveOpenAIResearchOptions(
   };
 }
 
-function buildRequestOptions(
-  signal: AbortSignal | undefined,
-  idempotencyKey?: string,
-) {
-  if (!signal && !idempotencyKey) {
-    return undefined;
+function resolveOutputText(response: OpenAIResponseLike): string {
+  if (typeof response.output_text === "string") {
+    return response.output_text;
   }
-
-  return {
-    ...(signal ? { signal } : {}),
-    ...(idempotencyKey ? { idempotencyKey } : {}),
-  };
+  const texts: string[] = [];
+  for (const item of response.output ?? []) {
+    if (item.type !== "message" || !item.content) continue;
+    for (const content of item.content) {
+      if (content.type === "output_text" && typeof content.text === "string") {
+        texts.push(content.text);
+      }
+    }
+  }
+  return texts.join("");
 }
 
 function parseSearchResponse(
@@ -438,7 +461,7 @@ function parseSearchResponse(
     throw new Error(`search did not complete (status: ${status})`);
   }
 
-  const payload = parseSearchPayload(response.output_text);
+  const payload = parseSearchPayload(resolveOutputText(response));
   return {
     results: payload.sources.slice(0, maxResults).map((source) => ({
       title: source.title.trim(),
@@ -476,7 +499,7 @@ function ensureCompletedResponse(
 function formatResponseOutput(response: OpenAIResponseLike): ToolOutput {
   const citations = extractUrlCitations(response);
   return {
-    text: response.output_text ?? "",
+    text: resolveOutputText(response),
     sources: citations.map(({ title, url }) => ({ title, url })),
     metadata: {
       responseId: response.id,
@@ -500,7 +523,7 @@ function extractUrlCitations(response: OpenAIResponseLike): Array<{
   }> = [];
   const seen = new Set<string>();
 
-  for (const item of response.output) {
+  for (const item of response.output ?? []) {
     if (item.type !== "message" || !item.content) {
       continue;
     }

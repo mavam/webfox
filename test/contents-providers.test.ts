@@ -2,69 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { providerHarness } from "./provider-harness.js";
 import { stubFetch } from "./fetch-stub.js";
 
-const {
-  cloudflareCtorMock,
-  cloudflareMarkdownCreateMock,
-  parallelCtorMock,
-  parallelExtractMock,
-  parallelSearchMock,
-  valyuCtorMock,
-  valyuContentsMock,
-  valyuWaitForJobMock,
-} = vi.hoisted(() => ({
-  cloudflareCtorMock: vi.fn(),
-  cloudflareMarkdownCreateMock: vi.fn(),
-  parallelCtorMock: vi.fn(),
-  parallelExtractMock: vi.fn(),
-  parallelSearchMock: vi.fn(),
-  valyuCtorMock: vi.fn(),
-  valyuContentsMock: vi.fn(),
-  valyuWaitForJobMock: vi.fn(),
-}));
-
-vi.mock("cloudflare", () => ({
-  default: cloudflareCtorMock.mockImplementation(function MockCloudflare() {
-    return {
-      browserRendering: {
-        markdown: {
-          create: cloudflareMarkdownCreateMock,
-        },
-      },
-    };
-  }),
-}));
-
-vi.mock("parallel-web", () => ({
-  default: parallelCtorMock.mockImplementation(function MockParallel() {
-    return {
-      search: parallelSearchMock,
-      extract: parallelExtractMock,
-    };
-  }),
-}));
-
-vi.mock("valyu-js", () => ({
-  Valyu: valyuCtorMock.mockImplementation(function MockValyu() {
-    return {
-      search: vi.fn(),
-      contents: valyuContentsMock,
-      waitForJob: valyuWaitForJobMock,
-      answer: vi.fn(),
-      deepresearch: {
-        create: vi.fn(),
-        status: vi.fn(),
-      },
-    };
-  }),
-}));
-
 afterEach(() => {
   vi.unstubAllGlobals();
-  cloudflareCtorMock.mockClear();
-  cloudflareMarkdownCreateMock.mockReset();
-  parallelCtorMock.mockClear();
-  parallelExtractMock.mockReset();
-  parallelSearchMock.mockReset();
 });
 
 describe("contents providers", () => {
@@ -74,41 +13,36 @@ describe("contents providers", () => {
     );
     const provider = providerHarness(cloudflareProvider);
 
-    cloudflareMarkdownCreateMock.mockResolvedValue(
-      "# Cloudflare Docs\n\nRendered content",
-    );
+    const calls = stubFetch(() => ({
+      success: true,
+      result: "# Cloudflare Docs\n\nRendered content",
+    }));
 
     const result = await provider.contents(
       "https://developers.cloudflare.com/browser-rendering/",
       { credentials: { api: "literal-token" }, accountId: "account-id" },
       { cwd: process.cwd() },
       {
-        ...{
-          gotoOptions: {
-            waitUntil: "networkidle0",
-          },
-        },
-        ...{
-          cacheTTL: 0,
-        },
-      },
-    );
-
-    expect(cloudflareCtorMock).toHaveBeenCalledWith({
-      maxRetries: 0,
-      apiToken: "literal-token",
-    });
-    expect(cloudflareMarkdownCreateMock).toHaveBeenCalledWith(
-      {
         gotoOptions: {
           waitUntil: "networkidle0",
         },
         cacheTTL: 0,
-        account_id: "account-id",
-        url: "https://developers.cloudflare.com/browser-rendering/",
       },
-      undefined,
     );
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        url: "https://api.cloudflare.com/client/v4/accounts/account-id/browser-rendering/markdown?cacheTTL=0",
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer literal-token",
+        }),
+        body: {
+          gotoOptions: { waitUntil: "networkidle0" },
+          url: "https://developers.cloudflare.com/browser-rendering/",
+        },
+      }),
+    ]);
     expect(result).toMatchObject({
       url: "https://developers.cloudflare.com/browser-rendering/",
       content: "# Cloudflare Docs\n\nRendered content",
@@ -166,7 +100,7 @@ describe("contents providers", () => {
     );
     const provider = providerHarness(valyuProvider);
 
-    valyuContentsMock.mockResolvedValue({
+    stubFetch(() => ({
       success: true,
       results: [
         {
@@ -175,7 +109,7 @@ describe("contents providers", () => {
           error: "Page not found",
         },
       ],
-    });
+    }));
 
     await expect(
       provider.contents(
@@ -193,7 +127,7 @@ describe("contents providers", () => {
     );
     const provider = providerHarness(valyuProvider);
 
-    valyuContentsMock.mockResolvedValue({
+    const calls = stubFetch(() => ({
       success: true,
       results: [
         {
@@ -203,7 +137,7 @@ describe("contents providers", () => {
           content: "Intro\n\n- Item 1\n- Item 2",
         },
       ],
-    });
+    }));
 
     const result = await provider.contents(
       "https://valyu.ai/docs",
@@ -214,6 +148,13 @@ describe("contents providers", () => {
       undefined,
     );
 
+    expect(calls).toEqual([
+      expect.objectContaining({
+        url: "https://api.valyu.ai/v1/contents",
+        headers: expect.objectContaining({ "x-api-key": "literal-key" }),
+        body: { urls: ["https://valyu.ai/docs"] },
+      }),
+    ]);
     expect(result).toMatchObject({
       url: "https://valyu.ai/docs",
       content: "Intro\n\n- Item 1\n- Item 2",

@@ -1,5 +1,4 @@
-import PerplexityClient from "@perplexity-ai/perplexity_ai";
-
+import { httpError, WebfoxError } from "../../errors.js";
 import type {
   HttpProvider,
   ProviderContext,
@@ -8,13 +7,35 @@ import type {
   SourceInput,
   ToolOutput,
 } from "../contract.js";
-import { requireApiKey, trimSnippet } from "../shared.js";
+import {
+  asRecord,
+  describeHttpError,
+  joinUrl,
+  mergeHeaders,
+  readNonEmptyString,
+  readResponseBody,
+  readSseJson,
+  requestJson,
+  requireApiKey,
+  trimSnippet,
+} from "../shared.js";
 
+const DEFAULT_BASE_URL = "https://api.perplexity.ai";
 const DEFAULT_ANSWER_MODEL = "sonar";
 const DEFAULT_RESEARCH_MODEL = "sonar-deep-research";
 
+type PerplexitySearchResponse = {
+  results?: Array<{
+    title?: string;
+    url: string;
+    snippet?: string;
+    date?: string;
+    last_updated?: string;
+  }>;
+};
+
 type PerplexityForegroundChunk = {
-  choices: Array<{
+  choices?: Array<{
     message?: { content?: unknown };
     delta?: { content?: unknown };
   }>;
@@ -31,17 +52,27 @@ export const adapter = {
     config: HttpProvider,
     context: ProviderContext,
   ): Promise<SearchResponse> {
-    const client = createClient(config);
-    const body = {
-      ...(request.options ?? {}),
-      query: request.query,
-      max_results: request.maxResults,
-    };
+    const baseUrl = resolveBaseUrl(config.baseUrl, context.env);
+    const response = (await requestJson(
+      joinUrl(baseUrl, "/search"),
+      {
+        headers: buildHeaders(config, baseUrl, context.env),
+        body: {
+          ...(request.options ?? {}),
+          query: request.query,
+          max_results: request.maxResults,
+        },
+        signal: context.signal,
+      },
+      (payload, reply) => describeHttpError("Perplexity", payload, reply),
+    )) as PerplexitySearchResponse;
 
-    const response = await client.search.create(
-      body as never,
-      buildRequestOptions(context),
-    );
+    if (!Array.isArray(response.results)) {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        "Perplexity returned an invalid search response.",
+      );
+    }
 
     return {
       results: response.results.slice(0, request.maxResults).map((result) => ({
@@ -97,20 +128,23 @@ async function runSilentForegroundChatTool(
   fallbackModel: string,
   options?: Record<string, unknown>,
 ): Promise<ToolOutput> {
-  const client = createClient(config);
+  const baseUrl = resolveBaseUrl(config.baseUrl, context.env);
+  const response = (await requestJson(
+    joinUrl(baseUrl, "/chat/completions"),
+    {
+      headers: buildHeaders(config, baseUrl, context.env),
+      body: {
+        ...(options ?? {}),
+        messages: [{ role: "user", content: input }],
+        model: resolveModel(options?.model, fallbackModel),
+        stream: false,
+      },
+      signal: context.signal,
+    },
+    (payload, reply) => describeHttpError("Perplexity", payload, reply),
+  )) as PerplexityForegroundChunk;
 
-  const request = {
-    ...(options ?? {}),
-    messages: [{ role: "user", content: input }],
-    model: resolveModel(options?.model, fallbackModel),
-    stream: false,
-  };
-
-  const response = await client.chat.completions.create(
-    request as never,
-    buildRequestOptions(context),
-  );
-  const content = extractMessageText(response.choices[0]?.message?.content);
+  const content = extractMessageText(response.choices?.[0]?.message?.content);
   const sources = dedupeSources(extractSources(response));
 
   return {
@@ -126,31 +160,60 @@ async function runStreamingForegroundChatTool(
   fallbackModel: string,
   options?: Record<string, unknown>,
 ): Promise<ToolOutput> {
-  const client = createClient(config);
+  const baseUrl = resolveBaseUrl(config.baseUrl, context.env);
+  const response = await fetch(joinUrl(baseUrl, "/chat/completions"), {
+    method: "POST",
+    headers: mergeHeaders(buildHeaders(config, baseUrl, context.env), {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({
+      ...(options ?? {}),
+      messages: [{ role: "user", content: input }],
+      model: resolveModel(options?.model, fallbackModel),
+      stream: true,
+    }),
+    signal: context.signal,
+  });
 
-  const request = {
-    ...(options ?? {}),
-    messages: [{ role: "user", content: input }],
-    model: resolveModel(options?.model, fallbackModel),
-    stream: true as const,
-  };
-
-  const stream = (await client.chat.completions.create(
-    request as never,
-    buildRequestOptions(context),
-  )) as unknown as AsyncIterable<PerplexityForegroundChunk>;
+  if (!response.ok) {
+    const payload = await readResponseBody(response);
+    throw httpError(
+      response,
+      describeHttpError("Perplexity", payload, response),
+    );
+  }
 
   let partialText = "";
   let lastChunk: PerplexityForegroundChunk | undefined;
   const sources: SourceInput[] = [];
 
-  for await (const chunk of stream) {
+  const handleChunk = (event: unknown, eventName?: string) => {
+    const record = asRecord(event);
+    if (!record) return;
+    if (eventName === "error" || record.error !== undefined) {
+      const errorRecord = asRecord(record.error);
+      const message =
+        readNonEmptyString(errorRecord?.message) ??
+        readNonEmptyString(record.error) ??
+        readNonEmptyString(record.message) ??
+        "Perplexity stream failed.";
+      throw new WebfoxError("PROVIDER_FAILURE", message);
+    }
+    const chunk = record as PerplexityForegroundChunk;
     lastChunk = chunk;
-    const deltaText = extractDeltaText(chunk.choices[0]?.delta?.content);
+    const deltaText = extractDeltaText(chunk.choices?.[0]?.delta?.content);
     if (deltaText) {
       partialText = `${partialText}${deltaText}`;
     }
     sources.push(...extractSources(chunk));
+  };
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    handleChunk(await readResponseBody(response));
+  } else {
+    await readSseJson(response, ({ event, data }) => handleChunk(data, event));
   }
 
   const finalText =
@@ -163,28 +226,58 @@ async function runStreamingForegroundChatTool(
   };
 }
 
-function createClient(config: HttpProvider): PerplexityClient {
-  const apiKey = requireApiKey(config);
+function resolveBaseUrl(
+  baseUrl: string | undefined,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return baseUrl?.trim() || env.PERPLEXITY_BASE_URL?.trim() || DEFAULT_BASE_URL;
+}
 
-  return new PerplexityClient({
-    maxRetries: 0,
-    apiKey,
-    baseURL: config.baseUrl,
-    ...(shouldSendIntegrationHeader(config.baseUrl)
-      ? { defaultHeaders: { "X-Pplx-Integration": "webfox" } }
-      : {}),
-  });
+function buildHeaders(
+  config: HttpProvider,
+  baseUrl: string,
+  env: Record<string, string | undefined> = process.env,
+): Record<string, string> {
+  const apiKey = requireApiKey(config);
+  const custom = parseCustomHeaders(env.PERPLEXITY_CUSTOM_HEADERS);
+  const hasIntegrationHeader = Object.keys(custom).some(
+    (name) => name.toLowerCase() === "x-pplx-integration",
+  );
+  return mergeHeaders(
+    shouldSendIntegrationHeader(baseUrl, hasIntegrationHeader)
+      ? { "X-Pplx-Integration": "webfox" }
+      : undefined,
+    custom,
+    {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+  );
+}
+
+function parseCustomHeaders(raw: string | undefined): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (!raw) return headers;
+  for (const line of raw.split("\n")) {
+    const colon = line.indexOf(":");
+    if (colon >= 0) {
+      const name = line.slice(0, colon).trim();
+      const value = line.slice(colon + 1).trim();
+      if (name) headers[name] = value;
+    }
+  }
+  return headers;
 }
 
 // Identify webfox traffic to the public Perplexity API only, and never
 // override a caller-supplied value from PERPLEXITY_CUSTOM_HEADERS.
-function shouldSendIntegrationHeader(baseUrl: string | undefined): boolean {
-  const customHeaders = process.env.PERPLEXITY_CUSTOM_HEADERS ?? "";
-  if (/^\s*x-pplx-integration\s*:/im.test(customHeaders)) return false;
-  const url = baseUrl ?? process.env.PERPLEXITY_BASE_URL?.trim();
-  if (!url) return true;
+function shouldSendIntegrationHeader(
+  baseUrl: string,
+  hasCustomIntegrationHeader: boolean,
+): boolean {
+  if (hasCustomIntegrationHeader) return false;
   try {
-    return new URL(url).hostname === "api.perplexity.ai";
+    return new URL(baseUrl).hostname === "api.perplexity.ai";
   } catch {
     return false;
   }
@@ -280,10 +373,4 @@ function extractSources(
       return citation?.trim() ? [{ url: citation }] : [];
     }) ?? []
   );
-}
-
-function buildRequestOptions(
-  context: ProviderContext,
-): { signal: AbortSignal } | undefined {
-  return context.signal ? { signal: context.signal } : undefined;
 }

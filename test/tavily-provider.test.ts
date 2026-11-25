@@ -1,81 +1,62 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-const { extractMock, searchMock, tavilyFactoryMock } = vi.hoisted(() => ({
-  extractMock: vi.fn(),
-  searchMock: vi.fn(),
-  tavilyFactoryMock: vi.fn(),
-}));
-
-vi.mock("@tavily/core", () => ({
-  tavily: tavilyFactoryMock.mockImplementation(function mockTavily() {
-    return {
-      search: searchMock,
-      extract: extractMock,
-      crawl: vi.fn(),
-      map: vi.fn(),
-      research: vi.fn(),
-      getResearch: vi.fn(),
-      feedback: vi.fn(),
-    };
-  }),
-}));
-
 import { tavilyProvider } from "../src/providers/tavily/definition.js";
 import { providerHarness } from "./provider-harness.js";
+import { stubFetch } from "./fetch-stub.js";
 
 afterEach(() => {
   delete process.env.TAVILY_API_KEY;
-  searchMock.mockReset();
-  extractMock.mockReset();
-  tavilyFactoryMock.mockClear();
+  vi.unstubAllGlobals();
 });
 
 describe("providerHarness(tavilyProvider)", () => {
-  it("merges search options, overrides maxResults, and preserves metadata", async () => {
-    process.env.TAVILY_API_KEY = "test-key";
-    searchMock.mockResolvedValue({
-      query: "tavily sdk",
-      responseTime: 1.09,
-      requestId: "request-123",
-      usage: { credits: 1 },
-      images: [],
-      results: [
-        {
-          title: "Tavily Docs",
-          url: "https://docs.tavily.com",
-          content: "A".repeat(400),
-          rawContent: "Raw Tavily Docs",
-          score: 0.92,
-          publishedDate: "2026-03-01",
-          favicon: "https://docs.tavily.com/favicon.ico",
-        },
-      ],
-    });
+  it("merges search options, overrides maxResults, forwards AbortSignal, and preserves metadata", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        query: "tavily sdk",
+        response_time: 1.09,
+        request_id: "request-123",
+        usage: { credits: 1 },
+        images: [],
+        results: [
+          {
+            title: "Tavily Docs",
+            url: "https://docs.tavily.com",
+            content: "A".repeat(400),
+            raw_content: "Raw Tavily Docs",
+            score: 0.92,
+            published_date: "2026-03-01",
+            favicon: "https://docs.tavily.com/favicon.ico",
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
 
     const response = await providerHarness(tavilyProvider).search(
       "tavily sdk",
       5,
       { credentials: { api: "test-key" }, baseUrl: "https://api.tavily.test" },
-      { cwd: process.cwd() },
+      { cwd: process.cwd(), signal: controller.signal },
       {
-        ...{
-          topic: "news",
-        },
-        ...{
-          country: "US",
-          maxResults: 50,
-        },
+        topic: "news",
+        country: "US",
+        maxResults: 50,
       },
     );
 
-    expect(tavilyFactoryMock).toHaveBeenCalledWith({
-      apiKey: "test-key",
-      apiBaseURL: "https://api.tavily.test",
-    });
-    expect(searchMock).toHaveBeenCalledWith("tavily sdk", {
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("https://api.tavily.test/search");
+    expect(init?.signal).toBe(controller.signal);
+    expect(new Headers(init?.headers).get("authorization")).toBe(
+      "Bearer test-key",
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      query: "tavily sdk",
       topic: "news",
       country: "US",
-      maxResults: 5,
+      max_results: 5,
     });
     expect(response.results).toEqual([
       {
@@ -96,32 +77,31 @@ describe("providerHarness(tavilyProvider)", () => {
   });
 
   it("extracts page contents with metadata and surfaces failed extractions", async () => {
-    extractMock
-      .mockResolvedValueOnce({
-        results: [
-          {
-            url: "https://example.com/b",
-            title: "Page B",
-            rawContent: "Body B",
-            images: ["https://example.com/image.png"],
-            favicon: "https://example.com/favicon.ico",
-          },
-        ],
-        failedResults: [],
-        responseTime: 2.5,
-        requestId: "extract-123",
-      })
-      .mockResolvedValueOnce({
+    const calls = stubFetch(({ body }) => {
+      const [url] = body.urls as string[];
+      if (url === "https://example.com/b") {
+        return {
+          results: [
+            {
+              url: "https://example.com/b",
+              title: "Page B",
+              raw_content: "Body B",
+              images: ["https://example.com/image.png"],
+              favicon: "https://example.com/favicon.ico",
+            },
+          ],
+          failed_results: [],
+          response_time: 2.5,
+          request_id: "extract-123",
+        };
+      }
+      return {
         results: [],
-        failedResults: [
-          {
-            url: "https://example.com/a",
-            error: "blocked",
-          },
-        ],
-        responseTime: 1.2,
-        requestId: "extract-124",
-      });
+        failed_results: [{ url: "https://example.com/a", error: "blocked" }],
+        response_time: 1.2,
+        request_id: "extract-124",
+      };
+    });
 
     const page = await providerHarness(tavilyProvider).contents(
       "https://example.com/b",
@@ -133,9 +113,16 @@ describe("providerHarness(tavilyProvider)", () => {
       },
     );
 
-    expect(extractMock).toHaveBeenCalledWith(["https://example.com/b"], {
-      format: "markdown",
-      includeImages: true,
+    expect(calls[0]).toMatchObject({
+      url: "https://api.tavily.com/extract",
+      headers: expect.objectContaining({
+        authorization: "Bearer literal-key",
+      }),
+      body: {
+        urls: ["https://example.com/b"],
+        format: "markdown",
+        include_images: true,
+      },
     });
     expect(page).toEqual({
       url: "https://example.com/b",

@@ -3,12 +3,6 @@ import { createWebfox } from "../src/index.js";
 import { executeAsyncResearch } from "../src/runtime/polling.js";
 import { WebfoxError } from "../src/errors.js";
 import { providers } from "../src/providers/registry.js";
-const { markdown } = vi.hoisted(() => ({ markdown: vi.fn() }));
-vi.mock("cloudflare", () => ({
-  default: class {
-    browserRendering = { markdown: { create: markdown } };
-  },
-}));
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -58,11 +52,16 @@ it.each([
 );
 
 it("retries structurally transient per-page failures on safe adapters", async () => {
-  markdown
-    .mockRejectedValueOnce(
-      Object.assign(new Error("rate limited"), { status: 429 }),
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json(
+        { success: false, errors: [{ message: "rate limited" }] },
+        { status: 429 },
+      ),
     )
-    .mockResolvedValueOnce("page");
+    .mockResolvedValueOnce(Response.json({ success: true, result: "page" }));
+  vi.stubGlobal("fetch", fetchMock);
   const client = createWebfox({
     config: { execution: { retries: 1, retryDelayMs: 0 } },
     env: { CLOUDFLARE_API_TOKEN: "token", CLOUDFLARE_ACCOUNT_ID: "account" },
@@ -75,7 +74,7 @@ it("retries structurally transient per-page failures on safe adapters", async ()
       })
     ).results[0],
   ).toMatchObject({ ok: true, value: { content: "page" } });
-  expect(markdown).toHaveBeenCalledTimes(2);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 it("applies the runtime retry policy to polling without restarting jobs", async () => {
   const start = vi.fn().mockResolvedValue({ id: "job" });

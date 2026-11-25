@@ -1,15 +1,10 @@
 import { expect, it } from "vitest";
-import type { TavilySearchOptions, TavilyExtractOptions } from "@tavily/core";
-import type { SearchParams } from "parallel-web/resources/top-level";
-import type { MarkdownCreateParams } from "cloudflare/resources/browser-rendering/markdown";
-import type { CompletionCreateParams } from "@perplexity-ai/perplexity_ai/resources/chat/completions";
-import type { DeepResearchCreateOptions, DeepResearchTools } from "valyu-js";
 import type { Capability, ProviderId } from "../src/domain.js";
 import { providers } from "../src/providers/registry.js";
 import { validateOptions } from "../src/configuration/planning.js";
 
-// SDK type checks catch upstream removals/renames where a provider uses an SDK;
-// runtime checks validate samples against the schemas exposed to callers.
+// Runtime checks validate representative provider-native option payloads
+// against the schemas exposed to CLI, library, and Pi callers.
 const samples: Array<{
   provider: ProviderId;
   capability: Capability;
@@ -65,7 +60,7 @@ const samples: Array<{
       filterByPublishedDate: true,
       includeUsage: true,
       timeRange: "week",
-    } satisfies TavilySearchOptions,
+    },
   },
   {
     provider: "tavily",
@@ -76,7 +71,7 @@ const samples: Array<{
       chunksPerSource: 3,
       includeUsage: true,
       timeout: 30,
-    } satisfies TavilyExtractOptions,
+    },
   },
   {
     provider: "parallel",
@@ -89,7 +84,7 @@ const samples: Array<{
         fetch_policy: { max_age_seconds: 600 },
         excerpt_settings: { max_chars_per_result: 2000 },
       },
-    } satisfies Omit<SearchParams, "search_queries">,
+    },
   },
   {
     provider: "cloudflare",
@@ -97,7 +92,7 @@ const samples: Array<{
     options: {
       gotoOptions: { timeout: 10000, waitUntil: "domcontentloaded" },
       waitForSelector: { selector: "main", visible: true },
-    } satisfies Omit<MarkdownCreateParams, "account_id" | "url">,
+    },
   },
   {
     provider: "perplexity",
@@ -108,7 +103,7 @@ const samples: Array<{
       max_tokens: 2000,
       search_mode: "academic",
       web_search_options: { search_context_size: "high" },
-    } satisfies Omit<CompletionCreateParams, "messages">,
+    },
   },
   {
     provider: "linkup",
@@ -129,8 +124,8 @@ const samples: Array<{
       tools: {
         browser_use: { enabled: true, max_calls: 3 },
         screenshots: false,
-      } satisfies DeepResearchTools,
-    } satisfies Omit<DeepResearchCreateOptions, "input" | "query">,
+      },
+    },
   },
   {
     provider: "serpbase",
@@ -179,6 +174,7 @@ const samples: Array<{
     options: { topic: "general", freshness: "month", max_sources: 10 },
   },
 ];
+
 it.each(samples)(
   "accepts provider-native $provider $capability controls",
   ({ provider, capability, options }) => {
@@ -207,6 +203,7 @@ it("isolates provider schemas and keeps host-managed controls unavailable", () =
     }
   }
 });
+
 it.each([
   ["firecrawl", "search", { location: { country: "US" } }],
   ["firecrawl", "contents", { location: { city: "Boston" } }],

@@ -74,8 +74,8 @@ it.each([
     if (expected) {
       expect(headers.get("x-pplx-integration")).toBe(expected);
     } else {
-      // Custom hosts retain the SDK's existing attribution, not webfox's.
-      expect(headers.get("x-pplx-integration")).toMatch(/^perplexity-node\//);
+      // Custom hosts do not receive webfox's integration header.
+      expect(headers.get("x-pplx-integration")).toBeNull();
     }
     expect(headers.get("authorization")).toBe("Bearer test-key");
     if (customHeaders) expect(headers.get("x-other")).toBe("preserved");

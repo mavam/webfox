@@ -1,5 +1,3 @@
-import ParallelClient from "parallel-web";
-
 import type { ContentsAnswer } from "../../domain.js";
 import { WebfoxError } from "../../errors.js";
 import type {
@@ -8,15 +6,41 @@ import type {
   ProviderRequest,
   SearchResponse,
 } from "../contract.js";
-
 import {
   ambiguousContentsError,
+  asRecord,
+  describeHttpError,
   formatJson,
+  joinUrl,
   omittedContentsError,
   pickSingleUrlOutcome,
+  requestJson,
   requireApiKey,
   trimSnippet,
 } from "../shared.js";
+
+const DEFAULT_BASE_URL = "https://api.parallel.ai";
+
+type ParallelSearchMode = "advanced" | "basic" | "fast" | "turbo";
+
+interface ParallelSearchResponse {
+  results?: Array<{
+    title?: string | null;
+    url: string;
+    excerpts?: string[] | null;
+  }>;
+}
+
+interface ParallelExtractResponse {
+  results?: Array<{
+    url: string;
+    excerpts?: string[] | null;
+    full_content?: string | null;
+  }>;
+  errors?: Array<{
+    url: string;
+  }>;
+}
 
 export const adapter = {
   async search(
@@ -24,14 +48,21 @@ export const adapter = {
     config: HttpProvider,
     context: ProviderContext,
   ): Promise<SearchResponse> {
-    const client = createClient(config);
-
-    const response = (await client.search(
+    const response = (await parallelRequest(
+      config,
+      context,
+      "/v1/search",
       buildParallelSearchParams(request.query, request.maxResults, {
         ...(request.options ?? {}),
-      }) as never,
-      buildRequestOptions(context),
+      }),
     )) as ParallelSearchResponse;
+
+    if (!Array.isArray(response.results)) {
+      throw new WebfoxError(
+        "PROVIDER_FAILURE",
+        "Parallel returned an invalid search response.",
+      );
+    }
 
     return {
       results: response.results.slice(0, request.maxResults).map((result) => ({
@@ -47,19 +78,19 @@ export const adapter = {
     config: HttpProvider,
     context: ProviderContext,
   ): Promise<ContentsAnswer> {
-    const client = createClient(config);
-
-    const response = (await client.extract(
+    const response = (await parallelRequest(
+      config,
+      context,
+      "/v1/extract",
       buildParallelExtractParams([request.url], {
         ...(request.options ?? {}),
-      }) as never,
-      buildRequestOptions(context),
-    )) as unknown as ParallelExtractResponse;
+      }),
+    )) as ParallelExtractResponse;
 
     const outcome = pickSingleUrlOutcome(
       request.url,
-      response.results,
-      response.errors,
+      response.results ?? [],
+      response.errors ?? [],
     );
     if (outcome.kind === "result") {
       const result = outcome.value;
@@ -81,27 +112,25 @@ export const adapter = {
   },
 };
 
-type ParallelSearchMode = NonNullable<
-  import("parallel-web/resources/top-level").SearchParams["mode"]
->;
-
-interface ParallelSearchResponse {
-  results: Array<{
-    title?: string | null;
-    url: string;
-    excerpts?: string[] | null;
-  }>;
-}
-
-interface ParallelExtractResponse {
-  results: Array<{
-    url: string;
-    excerpts?: string[] | null;
-    full_content?: string | null;
-  }>;
-  errors: Array<{
-    url: string;
-  }>;
+async function parallelRequest(
+  config: HttpProvider,
+  context: ProviderContext,
+  path: string,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const apiKey = requireApiKey(config);
+  const env = context.env ?? process.env;
+  const baseUrl =
+    config.baseUrl?.trim() || env.PARALLEL_BASE_URL?.trim() || DEFAULT_BASE_URL;
+  return await requestJson(
+    joinUrl(baseUrl, path),
+    {
+      headers: { "x-api-key": apiKey },
+      body,
+      signal: context.signal,
+    },
+    (payload, response) => describeHttpError("Parallel", payload, response),
+  );
 }
 
 function buildParallelSearchParams(
@@ -117,7 +146,7 @@ function buildParallelSearchParams(
     search_queries: _searchQueries,
     ...rest
   } = options;
-  const advancedSettings = readObjectOption(advancedSettingsValue);
+  const advancedSettings = { ...(asRecord(advancedSettingsValue) ?? {}) };
   const mode = normalizeParallelSearchMode(modeValue);
   const objective =
     typeof objectiveValue === "string" && objectiveValue.trim()
@@ -146,7 +175,7 @@ function buildParallelExtractParams(
     full_content: fullContentValue,
     ...rest
   } = options;
-  const advancedSettings = readObjectOption(advancedSettingsValue);
+  const advancedSettings = { ...(asRecord(advancedSettingsValue) ?? {}) };
 
   if (typeof fullContentValue === "boolean") {
     advancedSettings.full_content = fullContentValue;
@@ -179,26 +208,4 @@ function normalizeParallelSearchMode(
     default:
       return undefined;
   }
-}
-
-function readObjectOption(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? { ...(value as Record<string, unknown>) }
-    : {};
-}
-
-function createClient(config: HttpProvider): ParallelClient {
-  const apiKey = requireApiKey(config);
-
-  return new ParallelClient({
-    maxRetries: 0,
-    apiKey,
-    baseURL: config.baseUrl,
-  });
-}
-
-function buildRequestOptions(
-  context: ProviderContext,
-): { signal: AbortSignal } | undefined {
-  return context.signal ? { signal: context.signal } : undefined;
 }
