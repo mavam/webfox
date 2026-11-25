@@ -29,7 +29,6 @@ export function createWebfox(options: CreateWebfoxOptions = {}): WebfoxClient {
     ? validateConfig(structuredClone(options.config), "createWebfox config")
     : loadConfigSync({ configPath: options.configPath, env, cwd });
   validateConfiguredOptions(config);
-  const runtime = new ExecutionRuntime(cwd, env);
   const outward = new OutwardBoundary();
   // Inspection can redact known values without evaluating credential commands.
   const collect = (value: unknown): void => {
@@ -45,6 +44,7 @@ export function createWebfox(options: CreateWebfoxOptions = {}): WebfoxClient {
     for (const credential of definition.credentials)
       if (env[credential.environmentVariable])
         outward.addSecret(env[credential.environmentVariable]!);
+  const runtime = new ExecutionRuntime(cwd, env, outward);
   const configured = (
     definition: ProviderDefinition,
     capability: Capability,
@@ -75,7 +75,9 @@ export function createWebfox(options: CreateWebfoxOptions = {}): WebfoxClient {
           ),
         ) &&
       Object.entries(definition.credentialDefaults).every(([key, source]) =>
-        present(key === "accountId" ? (stored?.accountId ?? source) : source),
+        present(
+          (stored as Record<string, unknown> | undefined)?.[key] ?? source,
+        ),
       )
     );
   };

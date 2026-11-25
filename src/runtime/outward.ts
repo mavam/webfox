@@ -7,6 +7,11 @@ export class OutwardBoundary {
   addSecret(secret: string): void {
     if (secret) this.secrets.add(secret);
   }
+  clone(): OutwardBoundary {
+    const copy = new OutwardBoundary();
+    for (const secret of this.secrets) copy.addSecret(secret);
+    return copy;
+  }
   text(value: string): string {
     return [...this.secrets]
       .sort((a, b) => b.length - a.length)

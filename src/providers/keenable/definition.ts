@@ -19,6 +19,7 @@ export const keenableProvider = defineProvider({
   credentialDefaults: {},
   capabilities: {
     search: {
+      limits: { maxResults: 50 },
       options: {
         type: "object",
         properties: {

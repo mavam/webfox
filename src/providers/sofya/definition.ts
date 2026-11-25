@@ -50,6 +50,7 @@ export const sofyaProvider = defineProvider({
     search: {
       // Sofya calls can take up to 60 seconds; allow headroom.
       defaultTimeoutMs: 90_000,
+      limits: { maxResults: 20 },
       options: {
         type: "object",
         properties: {

@@ -25,6 +25,7 @@ export const youcomProvider = defineProvider({
   credentialDefaults: {},
   capabilities: {
     search: {
+      limits: { maxResults: 100 },
       options: {
         type: "object",
         properties: {

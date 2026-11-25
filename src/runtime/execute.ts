@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   Capability,
   CapabilityDocument,
@@ -43,6 +44,7 @@ export class ExecutionRuntime {
   constructor(
     private readonly cwd: string,
     private readonly env: Record<string, string | undefined>,
+    private readonly baseOutward: OutwardBoundary = new OutwardBoundary(),
   ) {
     this.credentials = new CredentialResolver(cwd, env);
   }
@@ -68,7 +70,7 @@ export class ExecutionRuntime {
         "timeoutMs must be a positive integer no larger than 2147483647.",
       );
     const scope = deadline(timeoutMs, request.signal);
-    const outward = new OutwardBoundary();
+    const outward = this.baseOutward.clone();
     let active = true;
     const notify = (event: ProgressEvent) => {
       if (!active) return;
@@ -122,16 +124,27 @@ export class ExecutionRuntime {
         definition.load(),
         scope.signal,
       );
+      const maxLimit = definition.capabilities[capability]?.limits?.maxResults;
+      const effectiveMaxResults =
+        capability === "search" && plan.maxResults !== undefined
+          ? maxLimit !== undefined
+            ? Math.min(plan.maxResults, maxLimit)
+            : plan.maxResults
+          : plan.maxResults;
       const run = async (
         input: string,
       ): Promise<InputResult<CapabilityValues[C]>> => {
         try {
+          const inputContext: ProviderContext = {
+            ...context,
+            idempotencyKey: randomUUID(),
+          };
           const operation: ProviderRequest =
             capability === "search"
               ? {
                   capability,
                   query: input,
-                  maxResults: plan.maxResults!,
+                  maxResults: effectiveMaxResults!,
                   options: plan.options,
                 }
               : capability === "contents"
@@ -144,13 +157,13 @@ export class ExecutionRuntime {
             config,
             operation,
             plan,
-            context,
+            inputContext,
           );
           const value =
             capability === "search"
               ? {
                   results: (result as ProviderResult<"search">).results
-                    .slice(0, plan.maxResults)
+                    .slice(0, effectiveMaxResults)
                     .map(searchValue),
                 }
               : capability === "contents"

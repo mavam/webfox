@@ -86,12 +86,11 @@ it("applies the runtime retry policy to polling without restarting jobs", async 
     )
     .mockResolvedValueOnce({
       status: "completed",
-      output: { provider: "openai", text: "done" },
+      output: { text: "done" },
     });
   const context = { cwd: ".", retryPolicy: { retries: 1, delayMs: 0 } };
   await expect(
     executeAsyncResearch({
-      providerId: "openai",
       providerLabel: "OpenAI",
       context,
       start,
@@ -105,7 +104,6 @@ it("applies the runtime retry policy to polling without restarting jobs", async 
   );
   await expect(
     executeAsyncResearch({
-      providerId: "openai",
       providerLabel: "OpenAI",
       context: { cwd: "." },
       start,
@@ -154,7 +152,6 @@ it("never retries research creation and preserves explicit terminal errors", asy
     );
   await expect(
     executeAsyncResearch({
-      providerId: "openai",
       providerLabel: "OpenAI",
       context: { cwd: "." },
       start,
@@ -164,11 +161,80 @@ it("never retries research creation and preserves explicit terminal errors", asy
   expect(start).toHaveBeenCalledTimes(1);
   await expect(
     executeAsyncResearch({
-      providerId: "openai",
       providerLabel: "OpenAI",
       context: { cwd: "." },
       start: async () => ({ id: "job" }),
       poll: async () => ({ status: "cancelled", error: "stopped remotely" }),
     }),
   ).rejects.toMatchObject({ code: "CANCELLED" });
+});
+
+it("redacts secrets from other configured providers during execution", async () => {
+  const otherSecret = "sk-unrelated-provider-secret-999";
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        new Response(`upstream leaked ${otherSecret}`, { status: 500 }),
+      ),
+  );
+  const client = createWebfox({
+    config: {},
+    env: {
+      BRAVE_SEARCH_API_KEY: "brave-secret",
+      OPENAI_API_KEY: otherSecret,
+    },
+  });
+  const result = await client.search({
+    provider: "brave",
+    queries: ["test"],
+  });
+  expect(result.results[0]).toMatchObject({ ok: false });
+  if (result.results[0].ok) throw new Error("expected failure");
+  expect(result.results[0].error.message).not.toContain(otherSecret);
+  expect(result.results[0].error.message).toContain("[redacted]");
+});
+
+it("clamps maxResults to provider capability limits centrally", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(Response.json({ results: [] }));
+  vi.stubGlobal("fetch", fetchMock);
+  const client = createWebfox({
+    config: {},
+    env: { OLLAMA_API_KEY: "test-key" },
+  });
+  await client.search({
+    provider: "ollama",
+    queries: ["test"],
+    maxResults: 50,
+  });
+  expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({
+    query: "test",
+    max_results: 10,
+  });
+});
+
+it("supplies a per-input idempotency key to adapters", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ id: "job-1" }))
+    .mockResolvedValueOnce(
+      Response.json({
+        status: "completed",
+        outputs: [{ type: "text", text: "Done" }],
+      }),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+  const client = createWebfox({
+    config: {},
+    env: { GOOGLE_API_KEY: "test-key" },
+  });
+  const doc = await client.research({
+    provider: "gemini",
+    input: "Topic",
+  });
+  expect(doc.status).toBe("ok");
+  expect(fetchMock.mock.calls[0]![1].headers["Idempotency-Key"]).toMatch(
+    /^[0-9a-f-]{36}$/i,
+  );
 });
